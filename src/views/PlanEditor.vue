@@ -118,7 +118,7 @@ async function updateAllPlansBinderStats() {
 
 // Update stats when plans, segments, or collection changes
 watch(
-  () => [plansStore.plans, segmentsStore.segments, collectionStore.owned] as const,
+  () => [plansStore.plans, segmentsStore.segments, collectionStore.ownedCardIds] as const,
   () => updateAllPlansBinderStats(),
   { immediate: true }
 )
