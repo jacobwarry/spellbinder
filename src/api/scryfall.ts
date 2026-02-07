@@ -2,7 +2,7 @@ import type { ScryfallSet, ScryfallCard } from '@/types'
 
 const BASE_URL = 'https://api.scryfall.com'
 const DB_NAME = 'spellbinder-cache'
-const DB_VERSION = 1
+const DB_VERSION = 2 // Updated to match binderImages.ts
 
 interface CachedSetCards {
   setCode: string
@@ -30,6 +30,11 @@ function openDatabase(): Promise<IDBDatabase> {
 
       if (!db.objectStoreNames.contains('setCards')) {
         db.createObjectStore('setCards', { keyPath: 'setCode' })
+      }
+
+      // Add binderImages store (for v2 upgrade)
+      if (!db.objectStoreNames.contains('binderImages')) {
+        db.createObjectStore('binderImages', { keyPath: 'binderId' })
       }
     }
   })

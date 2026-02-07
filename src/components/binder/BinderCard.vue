@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import type { Binder } from '@/types'
+import { getBinderImage } from '@/utils/binderImages'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   binder: Binder
   plannedCards?: number
   ownedCards?: number
   selected?: boolean
-}>()
+  showActions?: boolean
+}>(), {
+  showActions: true
+})
 
 defineEmits<{
   edit: [binder: Binder]
@@ -27,15 +31,50 @@ const ownedPercentage = computed(() => {
   if (props.plannedCards === undefined || props.plannedCards === 0) return 0
   return Math.round(((props.ownedCards ?? 0) / props.plannedCards) * 100)
 })
+
+// Cover image handling
+const coverImageUrl = ref<string | null>(null)
+
+async function loadCoverImage() {
+  if (props.binder.hasCoverImage) {
+    try {
+      const url = await getBinderImage(props.binder.id)
+      coverImageUrl.value = url
+    } catch (error) {
+      console.error('Failed to load binder cover image:', error)
+    }
+  }
+}
+
+watch(() => props.binder.hasCoverImage, () => {
+  if (props.binder.hasCoverImage) {
+    loadCoverImage()
+  } else {
+    if (coverImageUrl.value) {
+      URL.revokeObjectURL(coverImageUrl.value)
+    }
+    coverImageUrl.value = null
+  }
+}, { immediate: true })
+
+onMounted(() => {
+  loadCoverImage()
+})
+
+onUnmounted(() => {
+  if (coverImageUrl.value) {
+    URL.revokeObjectURL(coverImageUrl.value)
+  }
+})
 </script>
 
 <template>
-  <div class="binder-card" :class="[fillStatus, { selected }]">
+  <div class="binder-card" :class="[fillStatus, { selected, 'has-cover': coverImageUrl }]">
+    <div v-if="coverImageUrl" class="binder-cover-thumbnail">
+      <img :src="coverImageUrl" :alt="`${binder.name} cover`" />
+    </div>
     <div class="binder-info">
-      <div class="binder-title">
-        <h3>{{ binder.name }}</h3>
-        <span class="binder-format">[{{ binder.pageCount }}p × {{ binder.slotsPerPage }}]</span>
-      </div>
+      <h3 class="binder-title">{{ binder.name }}</h3>
       <p class="binder-stats">
         <template v-if="plannedCards !== undefined">
           <span class="planned-count" :class="fillStatus">{{ plannedCards }}</span> / {{ capacity }} cards
@@ -46,10 +85,9 @@ const ownedPercentage = computed(() => {
       </p>
       <p v-if="plannedCards !== undefined && plannedCards > 0" class="binder-owned">
         <span class="owned-count" :class="{ complete: ownedPercentage === 100 }">{{ ownedCards ?? 0 }}</span> / {{ plannedCards }} owned
-        <span class="owned-percentage" :class="{ complete: ownedPercentage === 100 }">({{ ownedPercentage }}%)</span>
       </p>
     </div>
-    <div class="binder-actions">
+    <div v-if="showActions" class="binder-actions">
       <button @click.stop="$emit('edit', binder)" class="btn-icon" title="Edit">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -71,12 +109,30 @@ const ownedPercentage = computed(() => {
 <style scoped>
 .binder-card {
   position: relative;
+  display: flex;
+  gap: 1rem;
   padding: 1rem;
   padding-right: 4rem;
   border: 1px solid #ddd;
   border-radius: 8px;
   background: #fff;
   cursor: pointer;
+}
+
+.binder-cover-thumbnail {
+  flex-shrink: 0;
+  width: 60px;
+  height: 84px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+}
+
+.binder-cover-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .binder-card:hover {
@@ -90,18 +146,12 @@ const ownedPercentage = computed(() => {
 }
 
 .binder-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
-}
-
-.binder-info h3 {
-  margin: 0 0 0.375rem 0;
+  margin: 0 0 0.25rem 0;
   font-size: 1rem;
 }
 
 .binder-format {
+  margin: 0 0 0.5rem 0;
   font-size: 0.75rem;
   color: #888;
   font-weight: normal;

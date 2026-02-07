@@ -10,6 +10,7 @@ const props = defineProps<{
   slotsPerPage: number
   pageNumber: number
   getSpacerCount: (segmentId: string, cardIndex: number) => number
+  zoomLevel?: number
 }>()
 
 const emit = defineEmits<{
@@ -126,6 +127,15 @@ function formatRarity(rarity: string): string {
 function formatCollectorNumber(num: string): string {
   return num.padStart(4, '0')
 }
+
+const zoomScale = computed(() => (props.zoomLevel ?? 100) / 100)
+
+const gridColumnWidth = computed(() => {
+  // Base width for a card slot (in pixels) at 100% zoom
+  // Using aspect ratio 63:95 with base height of 200px
+  const baseWidth = 132 // (200 * 63 / 95)
+  return `${baseWidth * zoomScale.value}px`
+})
 </script>
 
 <template>
@@ -138,7 +148,8 @@ function formatCollectorNumber(num: string): string {
         Mark all unowned
       </button>
     </div>
-    <div class="page-grid" :class="{ 'grid-9': slotsPerPage === 9, 'grid-12': slotsPerPage === 12 }">
+    <div class="page-grid-wrapper">
+      <div class="page-grid" :class="{ 'grid-9': slotsPerPage === 9, 'grid-12': slotsPerPage === 12 }" :style="{ '--grid-column-width': gridColumnWidth }">
     <div
       v-for="slot in slotsPerPage"
       :key="slot"
@@ -221,6 +232,7 @@ function formatCollectorNumber(num: string): string {
         <span class="insert-hint">+</span>
       </div>
     </div>
+      </div>
     </div>
   </div>
 </template>
@@ -250,20 +262,28 @@ function formatCollectorNumber(num: string): string {
   background: #e5e5e5;
 }
 
+.page-grid-wrapper {
+  overflow: visible;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
 .page-grid {
   display: grid;
   gap: 4px;
   padding: 8px;
   background: #f0f0f0;
   border-radius: 4px;
+  transition: transform 0.2s ease;
 }
 
 .grid-9 {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, var(--grid-column-width, 132px));
 }
 
 .grid-12 {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, var(--grid-column-width, 132px));
 }
 
 .card-slot {

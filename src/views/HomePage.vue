@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useSegmentsStore, useCollectionStore, useBindersStore, usePlansStore } from '@/stores'
 import { getCachedCards } from '@/api/scryfall'
 import type { ScryfallCard } from '@/types'
 import { debugCollectionData, cleanupInvalidKeys, findDuplicateCardsInSegments, findOwnershipInconsistencies, fixOwnershipInconsistencies, cleanupOrphanedSegments } from '@/utils/debugCollection'
 import { calculatePlacements, type PlacementResult } from '@/composables/usePlacement'
 import MultiSelectDropdown from '@/components/MultiSelectDropdown.vue'
+
+const router = useRouter()
 
 // No emits needed - navigation handled by App.vue header
 
@@ -42,6 +45,13 @@ const advancedOwnershipFilter = ref<string[]>(['owned', 'missing', 'skipped'])
 const advancedCmcMin = ref<number | ''>('')
 const advancedCmcMax = ref<number | ''>('')
 const advancedSearchTriggered = ref(false)
+
+// Check if user has any sets
+const hasNoSets = computed(() => plansStore.plans.length === 0)
+
+function navigateToSets() {
+  router.push('/sets?create=true')
+}
 
 // Apply draft filters to active filters
 function applyAdvancedFilters() {
@@ -601,7 +611,52 @@ onMounted(async () => {
 <template>
   <div class="home-page">
     <main class="main-content">
-      <div class="search-section">
+      <!-- Hero section for new users -->
+      <div v-if="hasNoSets" class="hero-section">
+        <div class="hero-content">
+          <h1 class="hero-title">Welcome to Spellbinder</h1>
+          <p class="hero-description">
+            Your personal Magic: The Gathering collection manager. Track your cards across multiple sets,
+            organize them in binders, and quickly search through your entire collection.
+          </p>
+          <p class="hero-subtitle">
+            Get started by creating your first set to begin building your collection.
+          </p>
+
+          <div class="storage-notice">
+            <div class="storage-notice-header">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="16" x2="12" y2="12"/>
+                <line x1="12" y1="8" x2="12.01" y2="8"/>
+              </svg>
+              <span>Local Data Storage</span>
+            </div>
+            <p class="storage-notice-text">
+              This application stores all your decks and sets data locally in your browser using
+              <strong>localStorage</strong> and <strong>IndexedDB</strong>. Your data remains entirely
+              on this device and is never sent to any server, ensuring complete privacy. However, this
+              also means there are a few important things to keep in mind:
+            </p>
+            <ul class="storage-notice-list">
+              <li>Your decks and sets data stays on this device and browser only</li>
+              <li>You cannot access your data on other devices or browsers (yet)</li>
+              <li>Data is completely private - nothing is sent to any server</li>
+            </ul>
+            <p class="storage-notice-warning">
+              <strong>⚠️ Warning:</strong> Clearing your browser's cache, localStorage, or IndexedDB
+              will permanently delete all your decks and sets data. Please be careful when clearing browser data!
+            </p>
+          </div>
+
+          <button @click="navigateToSets" class="btn btn-hero">
+            Create Your First Set
+          </button>
+        </div>
+      </div>
+
+      <!-- Search section (only shown when user has sets) -->
+      <div v-else class="search-section">
         <h2>Search Your Collection</h2>
         <p v-if="isLoading" class="loading-message">Loading cards...</p>
         <div v-else>
@@ -866,6 +921,107 @@ onMounted(async () => {
   flex: 1;
   overflow-y: auto;
   padding: 2rem;
+}
+
+.hero-section {
+  max-width: 800px;
+  margin: 4rem auto;
+  text-align: center;
+}
+
+.hero-content {
+  background: white;
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.hero-title {
+  font-size: 2.5rem;
+  color: #333;
+  margin: 0 0 1rem 0;
+  font-weight: 600;
+}
+
+.hero-description {
+  font-size: 1.125rem;
+  color: #666;
+  line-height: 1.6;
+  margin: 0 0 1.5rem 0;
+}
+
+.hero-subtitle {
+  font-size: 1rem;
+  color: #888;
+  margin: 0 0 1.5rem 0;
+}
+
+.storage-notice {
+  background: #f0f7ff;
+  border: 1px solid #4a90d9;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin: 0 0 2rem 0;
+  text-align: left;
+}
+
+.storage-notice-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #2a5a8a;
+  margin-bottom: 0.75rem;
+}
+
+.storage-notice-header svg {
+  stroke: #4a90d9;
+  flex-shrink: 0;
+}
+
+.storage-notice-text {
+  font-size: 0.875rem;
+  color: #333;
+  line-height: 1.5;
+  margin: 0 0 0.75rem 0;
+}
+
+.storage-notice-list {
+  font-size: 0.875rem;
+  color: #555;
+  line-height: 1.6;
+  margin: 0 0 0.75rem 1.5rem;
+  padding: 0;
+}
+
+.storage-notice-list li {
+  margin-bottom: 0.375rem;
+}
+
+.storage-notice-warning {
+  font-size: 0.8rem;
+  color: #856404;
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.btn-hero {
+  padding: 1rem 2.5rem;
+  font-size: 1.125rem;
+  color: white;
+  background: linear-gradient(135deg, #4a90d9 0%, #357abd 100%);
+  box-shadow: 0 4px 12px rgba(74, 144, 217, 0.3);
+}
+
+.btn-hero:hover {
+  background: linear-gradient(135deg, #3a7bc8 0%, #2a6ba8 100%);
+  box-shadow: 0 6px 16px rgba(74, 144, 217, 0.4);
+  transform: translateY(-1px);
 }
 
 .search-section {

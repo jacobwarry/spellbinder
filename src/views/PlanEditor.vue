@@ -12,6 +12,7 @@ import SegmentCard from '@/components/segments/SegmentCard.vue'
 import SetSelector from '@/components/sets/SetSelector.vue'
 import CardPicker from '@/components/sets/CardPicker.vue'
 import CardSearchModal from '@/components/cards/CardSearchModal.vue'
+import NewSetDialog from '@/components/plans/NewSetDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,6 +30,7 @@ const currentPlanId = computed(() => {
 const showBinderForm = ref(false)
 const editingBinder = ref<Binder | null>(null)
 const showSetSelector = ref(false)
+const showNewSetDialog = ref(false)
 const selectedSet = ref<ScryfallSet | null>(null)
 const placementResult = ref<PlacementResult | null>(null)
 const selectedBinderForView = ref<string | null>(null)
@@ -38,6 +40,8 @@ const planNameInput = ref('')
 const isSpreadView = ref(false)
 const SPREAD_VIEW_MIN_WIDTH = 1200
 const showCardSearch = ref(false)
+const ZOOM_STORAGE_KEY = 'spellbinder-zoom-level'
+const zoomLevel = ref(parseInt(localStorage.getItem(ZOOM_STORAGE_KEY) || '100', 10)) // Percentage zoom level
 const insertTargetSlot = ref<{
   binderId: string
   pageNumber: number
@@ -79,6 +83,45 @@ const planOwnedPercentage = computed(() => {
   }
   return percentages
 })
+
+// Calculate cards per binder for all plans (for overview section)
+const allPlansBinderStats = ref(new Map<string, { planned: number; owned: number }>())
+
+async function updateAllPlansBinderStats() {
+  const stats = new Map<string, { planned: number; owned: number }>()
+
+  for (const plan of plansStore.plans) {
+    const segments = segmentsStore.getSegmentsInOrder(plan.segmentIds)
+    const binders = bindersStore.getBindersInOrder(plan.binderIds)
+
+    if (segments.length === 0 || binders.length === 0) continue
+
+    const result = await calculatePlacements(segments, binders)
+    if (!result) continue
+
+    // Count planned and owned cards per binder
+    for (const placement of result.placements) {
+      const current = stats.get(placement.binderId) ?? { planned: 0, owned: 0 }
+      current.planned++
+
+      const key = getPlacementOwnershipKey(placement)
+      if (collectionStore.isOwned(key)) {
+        current.owned++
+      }
+
+      stats.set(placement.binderId, current)
+    }
+  }
+
+  allPlansBinderStats.value = stats
+}
+
+// Update stats when plans, segments, or collection changes
+watch(
+  () => [plansStore.plans, segmentsStore.segments, collectionStore.owned] as const,
+  () => updateAllPlansBinderStats(),
+  { immediate: true }
+)
 
 const planBinders = computed(() =>
   currentPlan.value ? bindersStore.getBindersInOrder(currentPlan.value.binderIds) : []
@@ -231,8 +274,28 @@ watch([planBinders, planSegments], async () => {
 }, { immediate: true })
 
 function createNewPlan() {
-  const plan = plansStore.createPlan('New Set')
+  showNewSetDialog.value = true
+}
+
+function handleNewSetSubmit(data: { name: string; binderId?: string; segmentId?: string }) {
+  const plan = plansStore.createPlan(data.name)
+
+  // Add binder if provided
+  if (data.binderId) {
+    plansStore.addBinderToPlan(plan.id, data.binderId)
+  }
+
+  // Add segment if provided
+  if (data.segmentId) {
+    plansStore.addSegmentToPlan(plan.id, data.segmentId)
+  }
+
+  showNewSetDialog.value = false
   router.push(`/sets/${plan.id}`)
+}
+
+function handleNewSetCancel() {
+  showNewSetDialog.value = false
 }
 
 function selectPlan(plan: BinderPlan) {
@@ -259,11 +322,21 @@ function cancelEditPlanName() {
   editingPlanName.value = false
 }
 
-function handleBinderSubmit(data: { name: string; pageCount: number; slotsPerPage: number }) {
+async function handleBinderSubmit(data: {
+  name: string
+  pageCount: number
+  slotsPerPage: number
+  coverImage?: File | null
+}) {
   if (editingBinder.value) {
-    bindersStore.updateBinder(editingBinder.value.id, data)
+    await bindersStore.updateBinder(editingBinder.value.id, data, data.coverImage)
   } else {
-    const binder = bindersStore.addBinder(data.name, data.pageCount, data.slotsPerPage)
+    const binder = await bindersStore.addBinder(
+      data.name,
+      data.pageCount,
+      data.slotsPerPage,
+      data.coverImage || undefined
+    )
     if (currentPlanId.value) {
       plansStore.addBinderToPlan(currentPlanId.value, binder.id)
     }
@@ -455,6 +528,26 @@ function cancelCardSearch() {
   showCardSearch.value = false
   insertTargetSlot.value = null
 }
+
+// Zoom controls
+const zoomLevels = [75, 90, 100, 110, 125, 150]
+const currentZoomIndex = computed(() => {
+  const index = zoomLevels.indexOf(zoomLevel.value)
+  return index >= 0 ? index : 2 // Default to 100%
+})
+
+function zoomIn() {
+  const nextIndex = Math.min(currentZoomIndex.value + 1, zoomLevels.length - 1)
+  zoomLevel.value = zoomLevels[nextIndex] ?? 100
+}
+
+function zoomOut() {
+  const prevIndex = Math.max(currentZoomIndex.value - 1, 0)
+  zoomLevel.value = zoomLevels[prevIndex] ?? 100
+}
+
+const canZoomIn = computed(() => currentZoomIndex.value < zoomLevels.length - 1)
+const canZoomOut = computed(() => currentZoomIndex.value > 0)
 
 function viewBinder(binderId: string) {
   selectedBinderForView.value = binderId
@@ -698,10 +791,38 @@ function updateSpreadView() {
   isSpreadView.value = window.innerWidth >= SPREAD_VIEW_MIN_WIDTH
 }
 
+// Persist zoom level to localStorage
+watch(zoomLevel, (newZoom) => {
+  localStorage.setItem(ZOOM_STORAGE_KEY, String(newZoom))
+})
+
+// Handle Escape key to close New Set dialog
+function handleNewSetDialogKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && showNewSetDialog.value) {
+    showNewSetDialog.value = false
+  }
+}
+
+// Add/remove keyboard listener when New Set dialog opens/closes
+watch(showNewSetDialog, (isOpen) => {
+  if (isOpen) {
+    window.addEventListener('keydown', handleNewSetDialogKeydown)
+  } else {
+    window.removeEventListener('keydown', handleNewSetDialogKeydown)
+  }
+})
+
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('resize', updateSpreadView)
   updateSpreadView()
+
+  // Check if we should auto-open the create dialog
+  if (route.query.create === 'true') {
+    showNewSetDialog.value = true
+    // Clean up the query parameter
+    router.replace('/sets')
+  }
 })
 
 onUnmounted(() => {
@@ -714,7 +835,17 @@ onUnmounted(() => {
   <div class="plan-editor">
     <aside class="sidebar">
       <section class="sidebar-section">
-        <h2>Sets</h2>
+        <div class="section-header">
+          <h2>Sets</h2>
+          <button
+            v-if="currentPlan"
+            @click="router.push('/sets')"
+            class="btn-back"
+            title="Back to overview"
+          >
+            ←
+          </button>
+        </div>
         <button @click="createNewPlan" class="btn btn-primary btn-full">+ New Set</button>
         <div class="plan-list">
           <button
@@ -831,9 +962,67 @@ onUnmounted(() => {
 
     <main class="main-content">
       <template v-if="!currentPlan">
-        <div class="empty-state">
-          <h2>Welcome to SpellBinder</h2>
-          <p>Create or select a set to get started.</p>
+        <!-- No sets exist -->
+        <div v-if="plansStore.plans.length === 0" class="empty-state">
+          <h2>Get Started with Your Collection</h2>
+          <p class="empty-description">
+            Click the <strong>"+ New Set"</strong> button to create your first set. You can add binders to organize your cards
+            and segments to track specific MTG sets from Scryfall.
+          </p>
+          <p class="empty-tip">
+            💡 <strong>Tip:</strong> When creating a set, you can optionally create a binder and select a Scryfall set
+            all in one step to get started quickly!
+          </p>
+        </div>
+
+        <!-- Sets exist, show overview -->
+        <div v-else class="overview-section">
+          <h2>Your Sets</h2>
+          <p class="overview-subtitle">Click on a set to view and manage your collection</p>
+
+          <div class="sets-overview">
+            <div
+              v-for="plan in sortedPlans"
+              :key="plan.id"
+              class="set-overview-card"
+            >
+              <div class="set-overview-header" @click="selectPlan(plan)">
+                <h3>{{ plan.name }}</h3>
+                <div class="set-completion">
+                  {{ planOwnedPercentage.get(plan.id) ?? 0 }}% complete
+                </div>
+              </div>
+
+              <div class="set-overview-stats" @click="selectPlan(plan)">
+                <div class="stat-item">
+                  <span class="stat-label">Segments:</span>
+                  <span class="stat-value">{{ plan.segmentIds.length }}</span>
+                </div>
+              </div>
+
+              <div class="set-progress-bar" @click="selectPlan(plan)">
+                <div
+                  class="set-progress-fill"
+                  :style="{ width: `${planOwnedPercentage.get(plan.id) ?? 0}%` }"
+                ></div>
+              </div>
+
+              <div v-if="plan.binderIds.length > 0" class="set-binders">
+                <h4>Binders</h4>
+                <div class="binder-list-compact">
+                  <BinderCard
+                    v-for="binder in bindersStore.getBindersInOrder(plan.binderIds)"
+                    :key="binder.id"
+                    :binder="binder"
+                    :planned-cards="allPlansBinderStats.get(binder.id)?.planned"
+                    :owned-cards="allPlansBinderStats.get(binder.id)?.owned ?? 0"
+                    :show-actions="false"
+                    @click="selectPlan(plan); viewBinder(binder.id)"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </template>
 
@@ -879,6 +1068,34 @@ onUnmounted(() => {
                 </option>
               </select>
             </div>
+            <div class="zoom-controls">
+              <button
+                @click="zoomOut"
+                :disabled="!canZoomOut"
+                class="btn btn-small btn-icon"
+                title="Zoom out"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="m21 21-4.35-4.35"/>
+                  <line x1="8" y1="11" x2="14" y2="11"/>
+                </svg>
+              </button>
+              <span class="zoom-level">{{ zoomLevel }}%</span>
+              <button
+                @click="zoomIn"
+                :disabled="!canZoomIn"
+                class="btn btn-small btn-icon"
+                title="Zoom in"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="m21 21-4.35-4.35"/>
+                  <line x1="11" y1="8" x2="11" y2="14"/>
+                  <line x1="8" y1="11" x2="14" y2="11"/>
+                </svg>
+              </button>
+            </div>
             <button
               @click="toggleAllBinderOwned"
               class="btn btn-small"
@@ -898,6 +1115,7 @@ onUnmounted(() => {
                 :slots-per-page="viewingBinder.slotsPerPage"
                 :page-number="isSpreadView && leftPageNumber ? leftPageNumber : selectedPage"
                 :get-spacer-count="getSpacerCount"
+                :zoom-level="zoomLevel"
                 @remove-card="handleRemoveCard"
                 @add-spacer="handleAddSpacer"
                 @remove-spacer="handleRemoveSpacer"
@@ -914,6 +1132,7 @@ onUnmounted(() => {
                 :slots-per-page="viewingBinder.slotsPerPage"
                 :page-number="rightPageNumber"
                 :get-spacer-count="getSpacerCount"
+                :zoom-level="zoomLevel"
                 @remove-card="handleRemoveCard"
                 @add-spacer="handleAddSpacer"
                 @remove-spacer="handleRemoveSpacer"
@@ -997,6 +1216,12 @@ onUnmounted(() => {
       @select="handleCardSelected"
       @cancel="cancelCardSearch"
     />
+
+    <NewSetDialog
+      v-if="showNewSetDialog"
+      @submit="handleNewSetSubmit"
+      @cancel="handleNewSetCancel"
+    />
   </div>
 </template>
 
@@ -1007,7 +1232,7 @@ onUnmounted(() => {
 }
 
 .sidebar {
-  width: 320px;
+  width: 380px;
   background: #f8f8f8;
   border-right: 1px solid #ddd;
   padding: 1rem;
@@ -1019,12 +1244,41 @@ onUnmounted(() => {
   margin-bottom: 1.5rem;
 }
 
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
 .sidebar-section h2 {
-  margin: 0 0 0.5rem 0;
+  margin: 0;
   font-size: 1rem;
   color: #666;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.btn-back {
+  background: none;
+  border: 1px solid #ddd;
+  color: #666;
+  font-size: 1.25rem;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.2s;
+}
+
+.btn-back:hover {
+  background: #e5e5e5;
+  border-color: #4a90d9;
+  color: #4a90d9;
 }
 
 .plan-list {
@@ -1117,6 +1371,154 @@ onUnmounted(() => {
   justify-content: center;
   height: 100%;
   color: #666;
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 2rem;
+}
+
+.empty-state h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.75rem;
+  color: #333;
+}
+
+.empty-description {
+  font-size: 1.125rem;
+  line-height: 1.6;
+  margin: 0 0 1.5rem 0;
+  color: #555;
+}
+
+.empty-tip {
+  background: #f0f7ff;
+  border: 1px solid #4a90d9;
+  border-radius: 8px;
+  padding: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #333;
+  text-align: left;
+}
+
+.overview-section {
+  padding: 2rem;
+}
+
+.overview-section h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.75rem;
+  color: #333;
+}
+
+.overview-subtitle {
+  margin: 0 0 2rem 0;
+  color: #666;
+  font-size: 1rem;
+}
+
+.sets-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.set-overview-card {
+  background: white;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 1.5rem;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.set-overview-header,
+.set-overview-stats,
+.set-progress-bar {
+  cursor: pointer;
+}
+
+.set-overview-card:hover .set-overview-header,
+.set-overview-card:hover .set-overview-stats,
+.set-overview-card:hover .set-progress-bar {
+  opacity: 0.8;
+}
+
+.set-overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.set-overview-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #333;
+  flex: 1;
+}
+
+.set-completion {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #28a745;
+}
+
+.set-overview-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.stat-item {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.stat-label {
+  color: #888;
+  font-size: 0.875rem;
+}
+
+.stat-value {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.875rem;
+}
+
+.set-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.set-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
+  transition: width 0.3s ease;
+}
+
+.set-binders {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}
+
+.set-binders h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.875rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.binder-list-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .modal-content {
@@ -1132,25 +1534,30 @@ onUnmounted(() => {
 .binder-view {
   max-width: 600px;
   margin: 0 auto;
+  padding: 1rem;
 }
 
 .binder-view:has(.spread-view) {
-  max-width: 1400px;
+  max-width: none;
 }
 
 .page-spread {
   display: flex;
   gap: 1rem;
   justify-content: center;
+  overflow-x: auto;
 }
 
 .page-spread:not(.spread-view) {
   flex-direction: column;
 }
 
+.page-spread.spread-view {
+  justify-content: center;
+}
+
 .page-spread.spread-view .page-wrapper {
-  flex: 1;
-  max-width: min(650px, calc((100vw - 320px - 4rem) / 2));
+  flex-shrink: 0;
 }
 
 .page-wrapper {
@@ -1188,6 +1595,26 @@ onUnmounted(() => {
 
 .binder-view-header h2 {
   margin: 0;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.zoom-level {
+  font-size: 0.875rem;
+  color: #666;
+  min-width: 3rem;
+  text-align: center;
+}
+
+.btn-icon {
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .page-nav {

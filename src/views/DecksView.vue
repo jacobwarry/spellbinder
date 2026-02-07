@@ -407,6 +407,22 @@ watch(selectedDeck, (deck) => {
   }
 }, { immediate: true })
 
+// Handle Escape key to close import modal
+function handleImportModalKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && showImportModal.value) {
+    showImportModal.value = false
+  }
+}
+
+// Add/remove keyboard listener when modal opens/closes
+watch(showImportModal, (isOpen) => {
+  if (isOpen) {
+    window.addEventListener('keydown', handleImportModalKeydown)
+  } else {
+    window.removeEventListener('keydown', handleImportModalKeydown)
+  }
+})
+
 // Group cards by category, sorted like Archidekt (Commander first, then alphabetical)
 const groupedCards = computed(() => {
   if (!selectedDeck.value) return new Map<string, Deck['cards']>()
@@ -531,6 +547,8 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
               :key="card.id"
               class="deck-card-item"
               :class="{ 'card-missing': !isDeckCardOwned(card) }"
+              @click="openCardSearch(card)"
+              :title="`${card.name} - Click to search in collection`"
             >
               <img
                 v-if="getCardImage(card)"
@@ -538,13 +556,6 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
                 :alt="card.name"
                 class="card-image"
               />
-              <button
-                class="card-search-btn"
-                @click="openCardSearch(card)"
-                title="Search for this card in collection"
-              >
-                ...
-              </button>
               <div class="card-overlay">
                 <span class="card-quantity" v-if="card.quantity > 1">x{{ card.quantity }}</span>
                 <span class="card-status">
@@ -558,7 +569,7 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
     </main>
 
     <!-- Import Modal -->
-    <div v-if="showImportModal" class="modal-overlay" @click.self="showImportModal = false">
+    <div v-if="showImportModal" class="modal-overlay">
       <div class="modal">
         <h2>Import Deck from Archidekt</h2>
         <p class="modal-description">
@@ -919,6 +930,7 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
   border-radius: 8px;
   overflow: hidden;
   transition: transform 0.2s;
+  cursor: pointer;
 }
 
 .deck-card-item:hover {
@@ -1069,33 +1081,6 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
 
 .btn-danger:hover {
   background: #c82333;
-}
-
-/* Card search button */
-.card-search-btn {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  background: rgba(0, 0, 0, 0.7);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.deck-card-item:hover .card-search-btn {
-  opacity: 1;
-}
-
-.card-search-btn:hover {
-  background: rgba(0, 0, 0, 0.9);
 }
 
 /* Search modal */

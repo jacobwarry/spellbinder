@@ -3,4 +3,5 @@ export interface Binder {
   name: string
   pageCount: number
   slotsPerPage: number
+  hasCoverImage?: boolean
 }
