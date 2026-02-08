@@ -22,7 +22,9 @@ export async function calculatePlacements(
   const placements: CardPlacement[] = []
   const overflow: PlacementResult['overflow'] = []
 
-  const binderCapacities = binders.map(b => b.pageCount * b.slotsPerPage)
+  const binderCapacities = binders.map(b =>
+    b.type === 'box' ? Number.MAX_SAFE_INTEGER : b.pageCount * b.slotsPerPage
+  )
   const totalCapacity = binderCapacities.reduce((sum, cap) => sum + cap, 0)
 
   // Track next available slot per binder (shared across all placements)
@@ -47,8 +49,18 @@ export async function calculatePlacements(
 
   // Helper to place a card in a binder at a specific slot
   function placeCard(card: NonNullable<ReturnType<typeof cardMap.get>>, segmentId: string, cardIndexInSegment: number, binder: Binder, binderIndex: number, slot: number) {
-    const pageNumber = Math.floor(slot / binder.slotsPerPage) + 1
-    const slotOnPage = (slot % binder.slotsPerPage) + 1
+    let pageNumber: number
+    let slotOnPage: number
+
+    if (binder.type === 'box') {
+      // For boxes, no page concept - use linear positioning
+      pageNumber = 1  // Always page 1 for boxes (ignored in UI)
+      slotOnPage = slot + 1  // Linear position
+    } else {
+      // Existing binder logic with pages
+      pageNumber = Math.floor(slot / binder.slotsPerPage) + 1
+      slotOnPage = (slot % binder.slotsPerPage) + 1
+    }
 
     placements.push({
       card,

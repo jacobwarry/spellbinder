@@ -18,12 +18,21 @@ defineEmits<{
   remove: [binder: Binder]
 }>()
 
-const capacity = computed(() => props.binder.pageCount * props.binder.slotsPerPage)
+const capacity = computed(() => {
+  if (props.binder.type === 'box') {
+    return '∞'  // Infinity symbol
+  }
+  return props.binder.pageCount * props.binder.slotsPerPage
+})
 
 const fillStatus = computed(() => {
   if (props.plannedCards === undefined) return null
-  if (props.plannedCards > capacity.value) return 'overflow'
-  if (props.plannedCards === capacity.value) return 'full'
+  // Boxes never overflow
+  if (props.binder.type === 'box') return 'partial'
+
+  const cap = capacity.value as number
+  if (props.plannedCards > cap) return 'overflow'
+  if (props.plannedCards === cap) return 'full'
   return 'partial'
 })
 
@@ -74,13 +83,27 @@ onUnmounted(() => {
       <img :src="coverImageUrl" :alt="`${binder.name} cover`" />
     </div>
     <div class="binder-info">
-      <h3 class="binder-title">{{ binder.name }}</h3>
+      <h3 class="binder-title">
+        {{ binder.name }}
+        <span v-if="binder.type === 'box'" class="type-badge box-badge">Box</span>
+      </h3>
       <p class="binder-stats">
         <template v-if="plannedCards !== undefined">
-          <span class="planned-count" :class="fillStatus">{{ plannedCards }}</span> / {{ capacity }} cards
+          <span class="planned-count" :class="fillStatus">{{ plannedCards }}</span>
+          <template v-if="binder.type === 'binder'">
+            / {{ capacity }} cards ({{ binder.pageCount }} pages)
+          </template>
+          <template v-else>
+            cards
+          </template>
         </template>
         <template v-else>
-          {{ capacity }} cards
+          <template v-if="binder.type === 'binder'">
+            {{ capacity }} cards ({{ binder.pageCount }} pages)
+          </template>
+          <template v-else>
+            Unlimited capacity
+          </template>
         </template>
       </p>
       <p v-if="plannedCards !== undefined && plannedCards > 0" class="binder-owned">
@@ -236,5 +259,18 @@ onUnmounted(() => {
 .btn-icon-danger:hover {
   background: #fee;
   color: #a00;
+}
+
+.type-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  margin-left: 0.5rem;
+  font-weight: 600;
+}
+
+.box-badge {
+  background-color: #6c757d;
+  color: white;
 }
 </style>

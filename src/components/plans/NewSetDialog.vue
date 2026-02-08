@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useBindersStore, useSegmentsStore } from '@/stores'
 import { fetchSets, fetchSetCards } from '@/api/scryfall'
-import type { ScryfallSet } from '@/types'
+import type { ScryfallSet, ContainerType } from '@/types'
 
 const emit = defineEmits<{
   submit: [data: { name: string; binderId?: string; segmentId?: string }]
@@ -15,6 +15,7 @@ const segmentsStore = useSegmentsStore()
 const setName = ref('')
 const shouldCreateBinder = ref(false)
 const binderName = ref('')
+const binderContainerType = ref<ContainerType>('binder')
 const binderPageCount = ref(40)
 const binderSlotsPerPage = ref(9)
 const shouldAddSegment = ref(false)
@@ -81,12 +82,19 @@ async function handleSubmit() {
     let binderId: string | undefined
     let segmentId: string | undefined
 
-    // Create binder if requested
+    // Create binder or box if requested
     if (shouldCreateBinder.value && binderName.value.trim()) {
+      const containerConfig = binderContainerType.value === 'binder'
+        ? {
+            type: 'binder' as const,
+            pageCount: binderPageCount.value,
+            slotsPerPage: binderSlotsPerPage.value
+          }
+        : { type: 'box' as const }
+
       const binder = await bindersStore.addBinder(
         binderName.value.trim(),
-        binderPageCount.value,
-        binderSlotsPerPage.value
+        containerConfig
       )
       binderId = binder.id
     }
@@ -142,47 +150,61 @@ function handleCancel() {
       <div class="form-section">
         <label class="checkbox-label">
           <input type="checkbox" v-model="shouldCreateBinder" />
-          <span>Add a binder</span>
+          <span>Add storage</span>
         </label>
 
         <div v-if="shouldCreateBinder" class="nested-form">
           <div class="form-group">
-            <label class="form-label required">Binder Name</label>
+            <label class="form-label required">Storage Name</label>
             <input
               v-model="binderName"
               type="text"
-              placeholder="Enter binder name..."
+              placeholder="Enter storage name..."
               class="form-input"
             />
           </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Pages</label>
-              <input
-                v-model.number="binderPageCount"
-                type="number"
-                min="1"
-                max="100"
-                class="form-input"
-              />
-            </div>
+          <div class="form-group">
+            <label class="form-label">Storage Type</label>
+            <select v-model="binderContainerType" class="form-input">
+              <option value="binder">Binder (Pages & Slots)</option>
+              <option value="box">Storage Box (Unlimited)</option>
+            </select>
+          </div>
 
-            <div class="form-group">
-              <label class="form-label">Slots per Page</label>
-              <select v-model.number="binderSlotsPerPage" class="form-input">
-                <option :value="9">9 (3×3)</option>
-                <option :value="12">12 (4×3)</option>
-              </select>
+          <template v-if="binderContainerType === 'binder'">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Pages</label>
+                <input
+                  v-model.number="binderPageCount"
+                  type="number"
+                  min="1"
+                  max="100"
+                  class="form-input"
+                />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Slots per Page</label>
+                <select v-model.number="binderSlotsPerPage" class="form-input">
+                  <option :value="9">9 (3×3)</option>
+                  <option :value="12">12 (4×3)</option>
+                </select>
+              </div>
             </div>
-          </div>
-          <div class="capacity-info">
-            Capacity: {{ binderPageCount * binderSlotsPerPage }} cards
-          </div>
+            <div class="capacity-info">
+              Capacity: {{ binderPageCount * binderSlotsPerPage }} cards
+            </div>
+          </template>
+
+          <p v-else class="box-info">
+            Storage boxes have unlimited capacity for flexible card organization.
+          </p>
         </div>
       </div>
 
-      <div class="form-section">
+      <div v-if="!shouldCreateBinder || binderContainerType !== 'box'" class="form-section">
         <label class="checkbox-label">
           <input type="checkbox" v-model="shouldAddSegment" />
           <span>Select and add a set</span>
@@ -350,6 +372,14 @@ function handleCancel() {
   margin-top: 0.5rem;
   font-size: 0.875rem;
   color: #666;
+}
+
+.box-info {
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+  font-size: 0.875rem;
+  color: #666;
+  font-style: italic;
 }
 
 .loading-text,

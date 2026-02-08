@@ -407,19 +407,27 @@ watch(selectedDeck, (deck) => {
   }
 }, { immediate: true })
 
-// Handle Escape key to close import modal
-function handleImportModalKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && showImportModal.value) {
-    showImportModal.value = false
+// Handle Escape key to close modals
+function handleModalKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    // Close search modal first (if open), then import modal
+    if (showSearchModal.value) {
+      showSearchModal.value = false
+      searchingCard.value = null
+      event.preventDefault()
+    } else if (showImportModal.value) {
+      showImportModal.value = false
+      event.preventDefault()
+    }
   }
 }
 
-// Add/remove keyboard listener when modal opens/closes
-watch(showImportModal, (isOpen) => {
-  if (isOpen) {
-    window.addEventListener('keydown', handleImportModalKeydown)
+// Add/remove keyboard listener when any modal opens/closes
+watch([showImportModal, showSearchModal], ([importOpen, searchOpen]) => {
+  if (importOpen || searchOpen) {
+    window.addEventListener('keydown', handleModalKeydown)
   } else {
-    window.removeEventListener('keydown', handleImportModalKeydown)
+    window.removeEventListener('keydown', handleModalKeydown)
   }
 })
 

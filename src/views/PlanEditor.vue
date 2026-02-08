@@ -8,9 +8,11 @@ import { calculatePlacements, type PlacementResult } from '@/composables/usePlac
 import BinderCard from '@/components/binder/BinderCard.vue'
 import BinderForm from '@/components/binder/BinderForm.vue'
 import BinderPageGrid from '@/components/binder/BinderPageGrid.vue'
+import BoxCardList from '@/components/binder/BoxCardList.vue'
 import SegmentCard from '@/components/segments/SegmentCard.vue'
 import SetSelector from '@/components/sets/SetSelector.vue'
 import CardPicker from '@/components/sets/CardPicker.vue'
+import BoxCardPicker from '@/components/sets/BoxCardPicker.vue'
 import CardSearchModal from '@/components/cards/CardSearchModal.vue'
 import NewSetDialog from '@/components/plans/NewSetDialog.vue'
 
@@ -32,6 +34,8 @@ const editingBinder = ref<Binder | null>(null)
 const showSetSelector = ref(false)
 const showNewSetDialog = ref(false)
 const selectedSet = ref<ScryfallSet | null>(null)
+const showBoxCardSelector = ref(false)
+const selectedSetForBox = ref<ScryfallSet | null>(null)
 const placementResult = ref<PlacementResult | null>(null)
 const selectedBinderForView = ref<string | null>(null)
 const selectedPage = ref(1)
@@ -135,6 +139,11 @@ const viewingBinder = computed(() =>
   selectedBinderForView.value ? bindersStore.getBinder(selectedBinderForView.value) : null
 )
 
+const currentBinderPlacements = computed(() => {
+  if (!viewingBinder.value || !placementResult.value) return []
+  return placementResult.value.placements.filter(p => p.binderId === viewingBinder.value!.id)
+})
+
 const currentPagePlacements = computed(() => {
   if (!placementResult.value || !selectedBinderForView.value) return []
   // In spread view, show the left page (even pages on left)
@@ -157,6 +166,7 @@ const leftPageNumber = computed(() => {
 
 const rightPageNumber = computed(() => {
   if (!viewingBinder.value) return null
+  if (viewingBinder.value.type === 'box') return null  // Boxes don't have pages
   if (!isSpreadView.value) return null
   // Page 1 is always alone (front of binder)
   if (selectedPage.value === 1) return null
@@ -260,14 +270,17 @@ function toggleAllBinderOwned() {
 }
 
 watch([planBinders, planSegments], async () => {
+  // Auto-select first binder if none selected
+  if (!selectedBinderForView.value && planBinders.value.length > 0) {
+    const firstBinder = planBinders.value[0]
+    if (firstBinder) {
+      selectedBinderForView.value = firstBinder.id
+    }
+  }
+
+  // Calculate placements if we have both binders and segments
   if (planBinders.value.length > 0 && planSegments.value.length > 0) {
     placementResult.value = await calculatePlacements(planSegments.value, planBinders.value)
-    if (!selectedBinderForView.value && planBinders.value.length > 0) {
-      const firstBinder = planBinders.value[0]
-      if (firstBinder) {
-        selectedBinderForView.value = firstBinder.id
-      }
-    }
   } else {
     placementResult.value = null
   }
@@ -291,6 +304,11 @@ function handleNewSetSubmit(data: { name: string; binderId?: string; segmentId?:
   }
 
   showNewSetDialog.value = false
+
+  // Reset view state and set to newly created binder if available
+  selectedBinderForView.value = data.binderId ?? null
+  selectedPage.value = 1
+
   router.push(`/sets/${plan.id}`)
 }
 
@@ -299,9 +317,14 @@ function handleNewSetCancel() {
 }
 
 function selectPlan(plan: BinderPlan) {
+  // Only reset view state when switching to a different plan
+  if (currentPlanId.value !== plan.id) {
+    selectedBinderForView.value = null
+    selectedPage.value = 1
+  }
   router.push(`/sets/${plan.id}`)
-  selectedBinderForView.value = null
-  selectedPage.value = 1
+  showBinderForm.value = false
+  editingBinder.value = null
 }
 
 function startEditPlanName() {
@@ -322,19 +345,20 @@ function cancelEditPlanName() {
   editingPlanName.value = false
 }
 
-async function handleBinderSubmit(data: {
-  name: string
-  pageCount: number
-  slotsPerPage: number
-  coverImage?: File | null
-}) {
+async function handleBinderSubmit(data:
+  | { name: string; type: 'binder'; pageCount: number; slotsPerPage: number; coverImage?: File | null }
+  | { name: string; type: 'box'; coverImage?: File | null }
+) {
   if (editingBinder.value) {
     await bindersStore.updateBinder(editingBinder.value.id, data, data.coverImage)
   } else {
+    const containerConfig = data.type === 'binder'
+      ? { type: 'binder' as const, pageCount: data.pageCount, slotsPerPage: data.slotsPerPage }
+      : { type: 'box' as const }
+
     const binder = await bindersStore.addBinder(
       data.name,
-      data.pageCount,
-      data.slotsPerPage,
+      containerConfig,
       data.coverImage || undefined
     )
     if (currentPlanId.value) {
@@ -374,6 +398,40 @@ function handleCardsConfirm(cardIds: string[]) {
   selectedSet.value = null
 }
 
+function handleBoxSetSelect(set: ScryfallSet) {
+  selectedSetForBox.value = set
+  showBoxCardSelector.value = false
+}
+
+function handleBoxCardsConfirm(cardIds: string[]) {
+  if (!selectedSetForBox.value || !currentPlanId.value || !selectedBinderForView.value) return
+
+  // Create a segment with selected cards, targeted to the current box
+  const segment = segmentsStore.addSegment(
+    selectedSetForBox.value.name,
+    selectedSetForBox.value.code,
+    cardIds
+  )
+
+  // Set the segment to target this box
+  segmentsStore.updateSegment(segment.id, { targetBinderId: selectedBinderForView.value })
+
+  // Add segment to plan
+  plansStore.addSegmentToPlan(currentPlanId.value, segment.id)
+
+  // Mark all cards as owned
+  const ownershipKeys = cardIds.map((_, index) => `${segment.id}:${index}`)
+  collectionStore.setMultipleOwned(ownershipKeys, true)
+
+  // Reset state
+  selectedSetForBox.value = null
+}
+
+function cancelBoxCardPicker() {
+  selectedSetForBox.value = null
+  showBoxCardSelector.value = true
+}
+
 function removeSegment(segment: Segment) {
   if (currentPlanId.value) {
     plansStore.removeSegmentFromPlan(currentPlanId.value, segment.id)
@@ -386,6 +444,34 @@ function updateSegmentOffset(segment: Segment, offset: number) {
 
 function updateSegmentTargetBinder(segment: Segment, binderId: string | undefined) {
   segmentsStore.updateSegment(segment.id, { targetBinderId: binderId })
+}
+
+function moveSegmentUp(segment: Segment) {
+  if (!currentPlanId.value) return
+  const plan = plansStore.getPlan(currentPlanId.value)
+  if (!plan) return
+
+  const index = plan.segmentIds.indexOf(segment.id)
+  if (index <= 0) return // Already at top or not found
+
+  const newSegmentIds = [...plan.segmentIds]
+  // Swap with previous segment
+  ;[newSegmentIds[index - 1], newSegmentIds[index]] = [newSegmentIds[index]!, newSegmentIds[index - 1]!]
+  plansStore.reorderSegments(currentPlanId.value, newSegmentIds)
+}
+
+function moveSegmentDown(segment: Segment) {
+  if (!currentPlanId.value) return
+  const plan = plansStore.getPlan(currentPlanId.value)
+  if (!plan) return
+
+  const index = plan.segmentIds.indexOf(segment.id)
+  if (index === -1 || index >= plan.segmentIds.length - 1) return // Already at bottom or not found
+
+  const newSegmentIds = [...plan.segmentIds]
+  // Swap with next segment
+  ;[newSegmentIds[index], newSegmentIds[index + 1]] = [newSegmentIds[index + 1]!, newSegmentIds[index]!]
+  plansStore.reorderSegments(currentPlanId.value, newSegmentIds)
 }
 
 function handleSegmentNavigate(segment: Segment) {
@@ -444,7 +530,7 @@ function handleInsertCard(pageNumber: number, slotOnPage: number) {
   if (!selectedBinderForView.value || !placementResult.value) return
 
   const targetBinder = bindersStore.getBinder(selectedBinderForView.value)
-  if (!targetBinder) return
+  if (!targetBinder || targetBinder.type === 'box') return  // Only for binders
 
   // Calculate target slot index (0-indexed)
   const targetSlotIndex = (pageNumber - 1) * targetBinder.slotsPerPage + (slotOnPage - 1)
@@ -552,6 +638,8 @@ const canZoomOut = computed(() => currentZoomIndex.value > 0)
 function viewBinder(binderId: string) {
   selectedBinderForView.value = binderId
   selectedPage.value = 1
+  showBinderForm.value = false
+  editingBinder.value = null
 }
 
 function deletePlan() {
@@ -583,7 +671,7 @@ function goToPrevPage() {
 }
 
 function goToNextPage() {
-  if (!viewingBinder.value) return
+  if (!viewingBinder.value || viewingBinder.value.type === 'box') return
   const maxPage = viewingBinder.value.pageCount
 
   if (isSpreadView.value) {
@@ -606,7 +694,7 @@ function goToNextPage() {
 const isFirstPageOfBinder = computed(() => selectedPage.value <= 1)
 
 const isLastPageOfBinder = computed(() => {
-  if (!viewingBinder.value) return true
+  if (!viewingBinder.value || viewingBinder.value.type === 'box') return true
   const maxPage = viewingBinder.value.pageCount
 
   if (isSpreadView.value) {
@@ -635,7 +723,7 @@ function goToPrevBinder() {
     if (prevBinder) {
       selectedBinderForView.value = prevBinder.id
       const binder = bindersStore.getBinder(prevBinder.id)
-      selectedPage.value = binder?.pageCount ?? 1
+      selectedPage.value = (binder?.type === 'binder' ? binder.pageCount : 1)
     }
   }
 }
@@ -651,7 +739,7 @@ function goToNextBinder() {
 }
 
 const totalPages = computed(() => {
-  return planBinders.value.reduce((sum, b) => sum + b.pageCount, 0)
+  return planBinders.value.reduce((sum, b) => sum + (b.type === 'binder' ? b.pageCount : 0), 0)
 })
 
 const globalPagePosition = computed(() => {
@@ -660,7 +748,7 @@ const globalPagePosition = computed(() => {
   let position = selectedPage.value
   for (let i = 0; i < currentIndex; i++) {
     const binder = planBinders.value[i]
-    if (binder) position += binder.pageCount
+    if (binder && binder.type === 'binder') position += binder.pageCount
   }
   return position
 })
@@ -678,7 +766,7 @@ function getLastSpreadPosition(pageCount: number): number {
 }
 
 function goToLastPage() {
-  if (viewingBinder.value) {
+  if (viewingBinder.value && viewingBinder.value.type === 'binder') {
     selectedPage.value = getLastSpreadPosition(viewingBinder.value.pageCount)
   }
 }
@@ -686,7 +774,7 @@ function goToLastPage() {
 function handlePageInput(event: Event) {
   const input = event.target as HTMLInputElement
   const page = parseInt(input.value, 10)
-  if (viewingBinder.value && page >= 1 && page <= viewingBinder.value.pageCount) {
+  if (viewingBinder.value && viewingBinder.value.type === 'binder' && page >= 1 && page <= viewingBinder.value.pageCount) {
     selectedPage.value = page
   } else {
     input.value = String(selectedPage.value)
@@ -699,7 +787,55 @@ function cancelCardPicker() {
 }
 
 function handleKeyDown(event: KeyboardEvent) {
+  // Handle ESC key to close modals
+  if (event.key === 'Escape') {
+    // Close modals in order of priority (most specific/topmost first)
+    if (showCardSearch.value) {
+      showCardSearch.value = false
+      insertTargetSlot.value = null
+      event.preventDefault()
+      return
+    }
+    if (selectedSetForBox.value) {
+      selectedSetForBox.value = null
+      event.preventDefault()
+      return
+    }
+    if (showBoxCardSelector.value) {
+      showBoxCardSelector.value = false
+      event.preventDefault()
+      return
+    }
+    if (selectedSet.value) {
+      selectedSet.value = null
+      event.preventDefault()
+      return
+    }
+    if (showSetSelector.value) {
+      showSetSelector.value = false
+      event.preventDefault()
+      return
+    }
+    if (showNewSetDialog.value) {
+      showNewSetDialog.value = false
+      event.preventDefault()
+      return
+    }
+    if (showBinderForm.value) {
+      showBinderForm.value = false
+      editingBinder.value = null
+      event.preventDefault()
+      return
+    }
+    if (editingPlanName.value) {
+      editingPlanName.value = false
+      event.preventDefault()
+      return
+    }
+  }
+
   if (!viewingBinder.value || !placementResult.value) return
+  if (viewingBinder.value.type === 'box') return  // Keyboard nav only for binders
 
   const target = event.target as HTMLElement
   if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') {
@@ -720,7 +856,7 @@ function handleKeyDown(event: KeyboardEvent) {
         if (prevBinder) {
           selectedBinderForView.value = prevBinder.id
           const binder = bindersStore.getBinder(prevBinder.id)
-          const lastPage = binder?.pageCount ?? 1
+          const lastPage = (binder?.type === 'binder' ? binder.pageCount : 1)
           selectedPage.value = getLastSpreadPosition(lastPage)
         }
       }
@@ -732,7 +868,7 @@ function handleKeyDown(event: KeyboardEvent) {
         if (prevBinder) {
           selectedBinderForView.value = prevBinder.id
           const binder = bindersStore.getBinder(prevBinder.id)
-          selectedPage.value = binder?.pageCount ?? 1
+          selectedPage.value = (binder?.type === 'binder' ? binder.pageCount : 1)
         }
       }
     }
@@ -902,9 +1038,9 @@ onUnmounted(() => {
         </section>
 
         <section class="sidebar-section">
-          <h2>Binders</h2>
+          <h2>Storage</h2>
           <button @click="showBinderForm = true; editingBinder = null" class="btn btn-secondary btn-full">
-            + Add Binder
+            + Add Storage
           </button>
           <div class="item-list">
             <BinderCard
@@ -921,7 +1057,7 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <section class="sidebar-section">
+        <section v-if="!viewingBinder || viewingBinder.type !== 'box'" class="sidebar-section">
           <h2>Segments</h2>
           <button @click="showSetSelector = true" class="btn btn-secondary btn-full">
             + Add Segment
@@ -936,6 +1072,8 @@ onUnmounted(() => {
               @update-offset="updateSegmentOffset"
               @update-target-binder="updateSegmentTargetBinder"
               @navigate="handleSegmentNavigate"
+              @move-up="moveSegmentUp"
+              @move-down="moveSegmentDown"
             />
           </div>
         </section>
@@ -953,7 +1091,7 @@ onUnmounted(() => {
               </li>
             </ul>
             <button @click="addBinderForOverflow" class="btn btn-primary btn-small btn-full overflow-btn">
-              + Add Binder for Overflow
+              + Add Storage for Overflow
             </button>
           </div>
         </section>
@@ -966,11 +1104,11 @@ onUnmounted(() => {
         <div v-if="plansStore.plans.length === 0" class="empty-state">
           <h2>Get Started with Your Collection</h2>
           <p class="empty-description">
-            Click the <strong>"+ New Set"</strong> button to create your first set. You can add binders to organize your cards
+            Click the <strong>"+ New Set"</strong> button to create your first set. You can add storage to organize your cards
             and segments to track specific MTG sets from Scryfall.
           </p>
           <p class="empty-tip">
-            💡 <strong>Tip:</strong> When creating a set, you can optionally create a binder and select a Scryfall set
+            💡 <strong>Tip:</strong> When creating a set, you can optionally create storage and select a Scryfall set
             all in one step to get started quickly!
           </p>
         </div>
@@ -1028,7 +1166,7 @@ onUnmounted(() => {
 
       <template v-else-if="showBinderForm">
         <div class="modal-content">
-          <h2>{{ editingBinder ? 'Edit' : 'Add' }} Binder</h2>
+          <h2>{{ editingBinder ? 'Edit' : 'Add' }} Storage</h2>
           <BinderForm
             :binder="editingBinder ?? undefined"
             @submit="handleBinderSubmit"
@@ -1057,11 +1195,31 @@ onUnmounted(() => {
         </div>
       </template>
 
-      <template v-else-if="viewingBinder && placementResult">
-        <div class="binder-view">
-          <div class="binder-view-header">
+      <template v-else-if="showBoxCardSelector">
+        <div class="modal-content">
+          <h2>Select Set to Add Cards From</h2>
+          <SetSelector @select="handleBoxSetSelect" />
+          <button @click="showBoxCardSelector = false" class="btn btn-secondary" style="margin-top: 1rem">
+            Cancel
+          </button>
+        </div>
+      </template>
+
+      <template v-else-if="selectedSetForBox">
+        <div class="card-picker-container">
+          <BoxCardPicker
+            :set="selectedSetForBox"
+            @confirm="handleBoxCardsConfirm"
+            @cancel="cancelBoxCardPicker"
+          />
+        </div>
+      </template>
+
+      <template v-else-if="viewingBinder">
+        <div class="storage-view">
+          <div class="storage-view-header">
             <div class="binder-selector">
-              <label>Binder:</label>
+              <label>Storage:</label>
               <select v-model="selectedBinderForView" @change="selectedPage = 1">
                 <option v-for="binder in planBinders" :key="binder.id" :value="binder.id">
                   {{ binder.name }}
@@ -1097,50 +1255,61 @@ onUnmounted(() => {
               </button>
             </div>
             <button
+              v-if="viewingBinder.type === 'binder'"
               @click="toggleAllBinderOwned"
               class="btn btn-small"
               :class="allBinderCardsOwned ? 'btn-secondary' : 'btn-primary'"
             >
               {{ allBinderCardsOwned ? 'Mark binder unowned' : 'Mark binder owned' }}
             </button>
+            <button
+              v-if="viewingBinder.type === 'box'"
+              @click="showBoxCardSelector = true"
+              class="btn btn-primary btn-small"
+            >
+              + Add Cards
+            </button>
           </div>
-          <div class="page-spread" :class="{ 'spread-view': isSpreadView }">
-            <div class="page-wrapper">
-              <div class="page-label">
-                Page {{ isSpreadView && leftPageNumber ? leftPageNumber : selectedPage }}
-                <span v-if="currentPageCardRange" class="card-range">{{ currentPageCardRange }}</span>
+
+          <!-- Binder page grid view -->
+          <template v-if="viewingBinder.type === 'binder'">
+            <div class="page-spread" :class="{ 'spread-view': isSpreadView }">
+              <div class="page-wrapper">
+                <div class="page-label">
+                  Page {{ isSpreadView && leftPageNumber ? leftPageNumber : selectedPage }}
+                  <span v-if="currentPageCardRange" class="card-range">{{ currentPageCardRange }}</span>
+                </div>
+                <BinderPageGrid
+                  :placements="currentPagePlacements"
+                  :slots-per-page="viewingBinder.slotsPerPage"
+                  :page-number="isSpreadView && leftPageNumber ? leftPageNumber : selectedPage"
+                  :get-spacer-count="getSpacerCount"
+                  :zoom-level="zoomLevel"
+                  @remove-card="handleRemoveCard"
+                  @add-spacer="handleAddSpacer"
+                  @remove-spacer="handleRemoveSpacer"
+                  @insert-card="handleInsertCard"
+                />
               </div>
-              <BinderPageGrid
-                :placements="currentPagePlacements"
-                :slots-per-page="viewingBinder.slotsPerPage"
-                :page-number="isSpreadView && leftPageNumber ? leftPageNumber : selectedPage"
-                :get-spacer-count="getSpacerCount"
-                :zoom-level="zoomLevel"
-                @remove-card="handleRemoveCard"
-                @add-spacer="handleAddSpacer"
-                @remove-spacer="handleRemoveSpacer"
-                @insert-card="handleInsertCard"
-              />
-            </div>
-            <div v-if="isSpreadView && rightPageNumber" class="page-wrapper">
-              <div class="page-label">
-                Page {{ rightPageNumber }}
-                <span v-if="rightPageCardRange" class="card-range">{{ rightPageCardRange }}</span>
+              <div v-if="isSpreadView && rightPageNumber" class="page-wrapper">
+                <div class="page-label">
+                  Page {{ rightPageNumber }}
+                  <span v-if="rightPageCardRange" class="card-range">{{ rightPageCardRange }}</span>
+                </div>
+                <BinderPageGrid
+                  :placements="rightPagePlacements"
+                  :slots-per-page="viewingBinder.slotsPerPage"
+                  :page-number="rightPageNumber"
+                  :get-spacer-count="getSpacerCount"
+                  :zoom-level="zoomLevel"
+                  @remove-card="handleRemoveCard"
+                  @add-spacer="handleAddSpacer"
+                  @remove-spacer="handleRemoveSpacer"
+                  @insert-card="handleInsertCard"
+                />
               </div>
-              <BinderPageGrid
-                :placements="rightPagePlacements"
-                :slots-per-page="viewingBinder.slotsPerPage"
-                :page-number="rightPageNumber"
-                :get-spacer-count="getSpacerCount"
-                :zoom-level="zoomLevel"
-                @remove-card="handleRemoveCard"
-                @add-spacer="handleAddSpacer"
-                @remove-spacer="handleRemoveSpacer"
-                @insert-card="handleInsertCard"
-              />
             </div>
-          </div>
-          <div class="pagination">
+            <div class="pagination">
             <button
               @click="goToFirstPage"
               :disabled="isFirstPageOfBinder"
@@ -1189,6 +1358,23 @@ onUnmounted(() => {
               ({{ globalPagePosition }} / {{ totalPages }} total)
             </span>
           </div>
+          </template>
+
+          <!-- Box list view -->
+          <template v-else-if="viewingBinder.type === 'box'">
+            <div class="box-view-title">
+              <h2>{{ viewingBinder.name }}</h2>
+            </div>
+            <div v-if="currentBinderPlacements.length === 0" class="empty-box-message">
+              <p>This box is empty. Click the "+ Add Cards" button above to add cards from a set.</p>
+            </div>
+            <BoxCardList
+              v-else
+              :placements="currentBinderPlacements"
+              :zoom="zoomLevel"
+            />
+          </template>
+
           <div v-if="isFirstPageOfBinder && hasPrevBinder" class="binder-nav binder-nav-prev">
             <button @click="goToPrevBinder" class="btn btn-secondary btn-small">
               ← Previous binder
@@ -1204,7 +1390,7 @@ onUnmounted(() => {
 
       <template v-else>
         <div class="empty-state">
-          <p>Add binders and segments, then click a binder to view placements.</p>
+          <p>Add storage and segments, then click storage to view placements.</p>
         </div>
       </template>
     </main>
@@ -1526,18 +1712,27 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
-.modal-content.full-height {
-  height: calc(100vh - 2rem);
-  max-width: 100%;
+.card-picker-container {
+  height: calc(100vh - 6rem);
+  padding: 1rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.binder-view {
+.storage-view {
   max-width: 600px;
   margin: 0 auto;
   padding: 1rem;
+  max-height: calc(100vh - 6rem);
+  overflow: hidden;
 }
 
-.binder-view:has(.spread-view) {
+.storage-view:has(.spread-view) {
+  max-width: none;
+}
+
+.storage-view:has(.box-view-title) {
   max-width: none;
 }
 
@@ -1586,14 +1781,14 @@ onUnmounted(() => {
   font-size: 0.875rem;
 }
 
-.binder-view-header {
+.storage-view-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
 }
 
-.binder-view-header h2 {
+.storage-view-header h2 {
   margin: 0;
 }
 
@@ -1803,5 +1998,30 @@ onUnmounted(() => {
 
 .binder-nav button:hover {
   background: #e0efff;
+}
+
+.box-view-title {
+  text-align: center;
+  padding: 1rem 0;
+  border-bottom: 2px solid #eee;
+  margin-bottom: 1rem;
+}
+
+.box-view-title h2 {
+  margin: 0;
+  font-size: 1.75rem;
+  color: #333;
+}
+
+.empty-box-message {
+  text-align: center;
+  padding: 3rem 2rem;
+  color: #666;
+}
+
+.empty-box-message p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
 }
 </style>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
-import type { Binder } from '@/types'
+import type { Binder, ContainerType } from '@/types'
 import { getTargetDimensions, getBinderImage } from '@/utils/binderImages'
 
 const props = defineProps<{
@@ -8,20 +8,28 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  submit: [data: { name: string; pageCount: number; slotsPerPage: number; coverImage?: File | null }]
+  submit: [data:
+    | { name: string; type: 'binder'; pageCount: number; slotsPerPage: number; coverImage?: File | null }
+    | { name: string; type: 'box'; coverImage?: File | null }
+  ]
   cancel: []
 }>()
 
 const name = ref(props.binder?.name ?? '')
-const pageCount = ref(props.binder?.pageCount ?? 40)
-const slotsPerPage = ref(props.binder?.slotsPerPage ?? 9)
+const containerType = ref<ContainerType>(props.binder?.type ?? 'binder')
+const pageCount = ref(props.binder?.type === 'binder' ? props.binder.pageCount : 40)
+const slotsPerPage = ref(props.binder?.type === 'binder' ? props.binder.slotsPerPage : 9)
 const coverImageFile = ref<File | null>(null)
 const coverImagePreview = ref<string | null>(null)
 const existingImageUrl = ref<string | null>(null)
 const isLoadingImage = ref(false)
 const shouldRemoveCoverImage = ref(false)
 
-const targetDimensions = computed(() => getTargetDimensions(slotsPerPage.value))
+const targetDimensions = computed(() => {
+  // For boxes, use 9 slots as default for image dimensions
+  const slots = containerType.value === 'binder' ? slotsPerPage.value : 9
+  return getTargetDimensions(slots)
+})
 
 async function loadExistingImage() {
   // Clean up previous URL
@@ -45,8 +53,14 @@ async function loadExistingImage() {
 
 watch(() => props.binder, async (newBinder) => {
   name.value = newBinder?.name ?? ''
-  pageCount.value = newBinder?.pageCount ?? 40
-  slotsPerPage.value = newBinder?.slotsPerPage ?? 9
+  containerType.value = newBinder?.type ?? 'binder'
+  if (newBinder?.type === 'binder') {
+    pageCount.value = newBinder.pageCount
+    slotsPerPage.value = newBinder.slotsPerPage
+  } else {
+    pageCount.value = 40
+    slotsPerPage.value = 9
+  }
   coverImageFile.value = null
   coverImagePreview.value = null
   shouldRemoveCoverImage.value = false
@@ -113,23 +127,42 @@ function removeCoverImage() {
 
 function handleSubmit() {
   if (!name.value.trim()) return
-  emit('submit', {
-    name: name.value.trim(),
-    pageCount: pageCount.value,
-    slotsPerPage: slotsPerPage.value,
-    coverImage: shouldRemoveCoverImage.value ? null : (coverImageFile.value ?? undefined)
-  })
+
+  if (containerType.value === 'binder') {
+    emit('submit', {
+      name: name.value.trim(),
+      type: 'binder' as const,
+      pageCount: pageCount.value,
+      slotsPerPage: slotsPerPage.value,
+      coverImage: shouldRemoveCoverImage.value ? null : (coverImageFile.value ?? undefined)
+    })
+  } else {
+    emit('submit', {
+      name: name.value.trim(),
+      type: 'box' as const,
+      coverImage: shouldRemoveCoverImage.value ? null : (coverImageFile.value ?? undefined)
+    })
+  }
 }
 </script>
 
 <template>
   <form @submit.prevent="handleSubmit" class="binder-form">
     <div class="form-group">
-      <label for="name">Binder Name</label>
-      <input id="name" v-model="name" type="text" placeholder="My Binder" required />
+      <label for="name">Name</label>
+      <input id="name" v-model="name" type="text" placeholder="My Binder or Box" required />
     </div>
 
-    <div class="form-row">
+    <div class="form-group">
+      <label for="containerType">Storage Type</label>
+      <select id="containerType" v-model="containerType">
+        <option value="binder">Binder (Pages & Slots)</option>
+        <option value="box">Storage Box (Unlimited)</option>
+      </select>
+    </div>
+
+    <!-- Conditional: Show only for type='binder' -->
+    <div v-if="containerType === 'binder'" class="form-row">
       <div class="form-group">
         <label for="pageCount">Pages</label>
         <input id="pageCount" v-model.number="pageCount" type="number" min="1" max="100" />
@@ -144,9 +177,14 @@ function handleSubmit() {
       </div>
     </div>
 
-    <div class="form-info">
+    <div v-if="containerType === 'binder'" class="form-info">
       Capacity: {{ pageCount * slotsPerPage }} cards
     </div>
+
+    <!-- Show capacity info for boxes -->
+    <p v-else class="box-info">
+      Storage boxes have unlimited capacity for flexible card organization.
+    </p>
 
     <div class="form-group">
       <label for="coverImage">Cover Image (optional)</label>
@@ -179,7 +217,7 @@ function handleSubmit() {
 
     <div class="form-actions">
       <button type="button" @click="$emit('cancel')" class="btn btn-secondary">Cancel</button>
-      <button type="submit" class="btn btn-primary">{{ binder ? 'Update' : 'Add' }} Binder</button>
+      <button type="submit" class="btn btn-primary">{{ binder ? 'Update' : 'Add' }} Storage</button>
     </div>
   </form>
 </template>
@@ -340,5 +378,12 @@ function handleSubmit() {
 
 .file-input::-webkit-file-upload-button:hover {
   background: #3a7bc8;
+}
+
+.box-info {
+  color: #666;
+  font-size: 0.875rem;
+  font-style: italic;
+  margin: 0;
 }
 </style>

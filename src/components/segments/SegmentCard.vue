@@ -34,6 +34,8 @@ const emit = defineEmits<{
   updateOffset: [segment: Segment, offset: number]
   updateTargetBinder: [segment: Segment, binderId: string | undefined]
   navigate: [segment: Segment]
+  moveUp: [segment: Segment]
+  moveDown: [segment: Segment]
 }>()
 
 function handleOffsetChange(event: Event) {
@@ -144,6 +146,16 @@ async function copyForCardmarket() {
       </div>
     </div>
     <div class="segment-actions">
+      <button @click.stop="$emit('moveUp', segment)" class="btn-icon" title="Move up">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="18 15 12 9 6 15"/>
+        </svg>
+      </button>
+      <button @click.stop="$emit('moveDown', segment)" class="btn-icon" title="Move down">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
       <button @click.stop="$emit('edit', segment)" class="btn-icon" title="Edit">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>

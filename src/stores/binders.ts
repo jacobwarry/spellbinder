@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Binder } from '@/types'
+import type { Binder, Container, PhysicalBinder, StorageBox } from '@/types'
 import { processBinderImage, saveBinderImage, deleteBinderImage } from '@/utils/binderImages'
 
 const STORAGE_KEY = 'spellbinder-binders'
@@ -18,6 +18,15 @@ function saveToStorage(binders: Binder[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(binders))
 }
 
+// Type guards for container discrimination
+export function isPhysicalBinder(container: Container): container is PhysicalBinder {
+  return container.type === 'binder'
+}
+
+export function isStorageBox(container: Container): container is StorageBox {
+  return container.type === 'box'
+}
+
 export const useBindersStore = defineStore('binders', () => {
   const binders = ref<Binder[]>(loadFromStorage())
 
@@ -33,43 +42,61 @@ export const useBindersStore = defineStore('binders', () => {
     return binderMap.value.get(id)
   }
 
-  function getBinderCapacity(binder: Binder): number {
-    return binder.pageCount * binder.slotsPerPage
+  function getBinderCapacity(container: Container): number {
+    if (container.type === 'box') {
+      return Number.MAX_SAFE_INTEGER  // Effectively unlimited
+    }
+    return container.pageCount * container.slotsPerPage
   }
 
   async function addBinder(
     name: string,
-    pageCount: number,
-    slotsPerPage: number,
+    containerConfig:
+      | { type: 'binder'; pageCount: number; slotsPerPage: number }
+      | { type: 'box' },
     coverImage?: File
-  ): Promise<Binder> {
-    const binder: Binder = {
-      id: generateId(),
-      name,
-      pageCount,
-      slotsPerPage,
-      hasCoverImage: false
+  ): Promise<Container> {
+    let container: Container
+
+    if (containerConfig.type === 'binder') {
+      container = {
+        id: generateId(),
+        name,
+        type: 'binder',
+        pageCount: containerConfig.pageCount,
+        slotsPerPage: containerConfig.slotsPerPage,
+        hasCoverImage: false
+      }
+    } else {
+      container = {
+        id: generateId(),
+        name,
+        type: 'box',
+        hasCoverImage: false
+      }
     }
 
     // Process and save cover image if provided
     if (coverImage) {
       try {
-        const processedBlob = await processBinderImage(coverImage, slotsPerPage)
-        await saveBinderImage(binder.id, processedBlob, slotsPerPage)
-        binder.hasCoverImage = true
+        // For boxes, use default 9 slots for image processing
+        const slotsForImage = container.type === 'binder' ? container.slotsPerPage : 9
+        const processedBlob = await processBinderImage(coverImage, slotsForImage)
+        await saveBinderImage(container.id, processedBlob, slotsForImage)
+        container.hasCoverImage = true
       } catch (error) {
         console.error('Failed to save cover image:', error)
       }
     }
 
-    binders.value.push(binder)
+    binders.value.push(container)
     saveToStorage(binders.value)
-    return binder
+    return container
   }
 
   async function updateBinder(
     id: string,
-    updates: Partial<Omit<Binder, 'id'>>,
+    updates: Partial<Omit<Container, 'id' | 'type'>>,
     coverImage?: File | null
   ): Promise<void> {
     const index = binders.value.findIndex(b => b.id === id)
@@ -90,8 +117,10 @@ export const useBindersStore = defineStore('binders', () => {
         } else if (coverImage instanceof File) {
           // Update with new cover image
           try {
-            const processedBlob = await processBinderImage(coverImage, updatedBinder.slotsPerPage)
-            await saveBinderImage(id, processedBlob, updatedBinder.slotsPerPage)
+            // For boxes, use default 9 slots for image processing
+            const slotsForImage = updatedBinder.type === 'binder' ? updatedBinder.slotsPerPage : 9
+            const processedBlob = await processBinderImage(coverImage, slotsForImage)
+            await saveBinderImage(id, processedBlob, slotsForImage)
             updatedBinder.hasCoverImage = true
           } catch (error) {
             console.error('Failed to save cover image:', error)
