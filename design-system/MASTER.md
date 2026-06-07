@@ -210,7 +210,7 @@ Always **icon/text + color**, never color alone.
 - Segmented horizontal bar of `--mana-*` widths = real proportions, + counted legend. The canonical spectrum moment.
 
 ### Card tile (search results)
-- `surface` card, art-by-color-identity top (aspect 63/88), name overlay, set/№ meta (tabular), ownership badge, optional binder location (`--accent` text — see §11). Hover: `translateY(-4px)` + `--shadow-2`. Missing → grayscale art.
+- `surface` card; art top (aspect 63/88) = real Scryfall image (`loading="lazy"`), with the colour-identity gradient as the missing/loading fallback. Body: name (2-line clamp, always — the searchable label), set/№/rarity meta (tabular), ownership badge, optional binder location (`--accent` text — see §11). Hover: `translateY(-4px)` + `--shadow-2`. Not-owned → grayscale art.
 
 ### Slot (binder)
 - aspect 63/88, art fill by color identity, name (2-line clamp), corner ownership indicator (16px dot), set/rarity/№ footer. Empty slot = dashed `--line-strong` + slot number + "+" on hover. Tap → action sheet. See page override.

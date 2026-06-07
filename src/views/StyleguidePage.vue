@@ -152,7 +152,6 @@ const sampleCards = [
             :number="card.number"
             :color="card.color"
             :rarity="card.rarity"
-            :type="card.type"
             :status="card.status"
             :location="(card as { location?: string }).location"
           />

@@ -11,6 +11,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SegmentedControl } from '@/components/ui/segmented'
 import ManaChip from '@/components/common/ManaChip.vue'
+import CardTile from '@/components/common/CardTile.vue'
+import type { Mana } from '@/components/common/types'
+import { useElementSize } from '@vueuse/core'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Database, TriangleAlert, Sparkles, ArrowRight, Search } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -89,10 +93,6 @@ function applyAdvancedFilters() {
   advancedCmcMin.value = draftCmcMin.value
   advancedCmcMax.value = draftCmcMax.value
 }
-
-// Pagination
-const currentPage = ref(1)
-const itemsPerPage = ref(100)
 
 const typeOptions = [
   {
@@ -423,61 +423,61 @@ const filteredCards = computed(() => {
   }
 })
 
-const totalPages = computed(() => Math.ceil(filteredCards.value.length / itemsPerPage.value))
+// Results: responsive column count from the measured scroll container, then
+// row-virtualize the card grid (no pagination — the whole result set is windowed).
+const scrollEl = ref<HTMLElement | null>(null)
+const { width: gridWidth } = useElementSize(scrollEl)
 
-const paginatedResults = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  const end = start + itemsPerPage.value
-  return filteredCards.value.slice(start, end)
+const TILE_MIN = 180
+const GRID_GAP = 16
+
+const columnCount = computed(() => {
+  const w = gridWidth.value
+  if (!w) return 1
+  return Math.max(1, Math.floor((w + GRID_GAP) / (TILE_MIN + GRID_GAP)))
 })
 
-const visiblePages = computed(() => {
-  const total = totalPages.value
-  const current = currentPage.value
-  const pages: (number | null)[] = []
-
-  // Always show first page
-  pages.push(1)
-
-  // Calculate range around current page
-  const rangeStart = Math.max(2, current - 2)
-  const rangeEnd = Math.min(total - 1, current + 2)
-
-  // Add ellipsis after first page if needed
-  if (rangeStart > 2) {
-    pages.push(null) // null represents ellipsis
-  }
-
-  // Add pages in range
-  for (let i = rangeStart; i <= rangeEnd; i++) {
-    pages.push(i)
-  }
-
-  // Add ellipsis before last page if needed
-  if (rangeEnd < total - 1) {
-    pages.push(null)
-  }
-
-  // Always show last page if there's more than one page
-  if (total > 1) {
-    pages.push(total)
-  }
-
-  return pages
+const resultRows = computed(() => {
+  const cols = columnCount.value
+  const items = filteredCards.value
+  const rows: (typeof items)[] = []
+  for (let i = 0; i < items.length; i += cols) rows.push(items.slice(i, i + cols))
+  return rows
 })
 
-function goToPage(page: number) {
-  if (page >= 1 && page <= totalPages.value) {
-    currentPage.value = page
-    // Scroll to top of results
-    document.querySelector('.results')?.scrollIntoView({ behavior: 'smooth' })
-  }
+const estimatedRowHeight = computed(() => {
+  const cols = columnCount.value
+  const w = gridWidth.value || TILE_MIN * cols
+  const colWidth = (w - (cols - 1) * GRID_GAP) / cols
+  return colWidth * (88 / 63) + 96 + GRID_GAP // image + body + row gap
+})
+
+const rowVirtualizer = useVirtualizer(
+  computed(() => ({
+    count: resultRows.value.length,
+    getScrollElement: () => scrollEl.value,
+    estimateSize: () => estimatedRowHeight.value,
+    overscan: 5,
+    gap: GRID_GAP
+  }))
+)
+
+function measureRow(el: unknown) {
+  if (el) rowVirtualizer.value.measureElement(el as Element)
 }
 
-// Reset to page 1 when search changes
-watch([debouncedSearchQuery, advancedNameQuery, advancedTypeFilter, advancedColorFilter, advancedCommanderIdentity, advancedRarityFilter, advancedOwnershipFilter, advancedCmcMin, advancedCmcMax], () => {
-  currentPage.value = 1
-})
+// Derive a single representative colour for the tile gradient fallback.
+function colorOf(card: ScryfallCard): Mana {
+  const ci = card.color_identity ?? []
+  return ci.length === 1 ? (ci[0] as Mana) : 'C'
+}
+function rarityLabel(r: string): string {
+  return r ? r.charAt(0).toUpperCase() + r.slice(1) : ''
+}
+function locationLabel(segmentId: string, cardIndex: number): string | undefined {
+  const loc = getCardLocation(segmentId, cardIndex)
+  return loc ? `${loc.binderName} · P${loc.pageNumber} · S${loc.slotOnPage}` : undefined
+}
 
 // Calculate placements for ALL plans
 const allPlacements = ref<Map<string, PlacementResult>>(new Map())
@@ -636,7 +636,7 @@ onMounted(async () => {
   <div class="home-page">
     <main class="main-content">
       <!-- First-run / empty state for new users -->
-      <div v-if="hasNoSets" class="flex justify-center px-4 py-10 sm:py-16">
+      <div v-if="hasNoSets" class="h-full overflow-y-auto flex justify-center px-4 py-10 sm:py-16">
         <div class="w-full max-w-2xl rounded-2xl border border-line bg-surface p-8 sm:p-10 shadow-(--shadow-1)">
           <div class="flex items-center gap-2 text-brand text-xs font-semibold uppercase tracking-[0.12em]">
             <Sparkles :size="15" /> Welcome
@@ -678,15 +678,17 @@ onMounted(async () => {
       </div>
 
       <!-- Search section (only shown when user has sets) -->
-      <div v-else class="search-section">
-        <h2 class="font-display text-xl font-bold tracking-tight">Search your collection</h2>
-        <p v-if="isLoading" class="text-ink-soft italic mt-4">Loading cards…</p>
-        <div v-else class="mt-4">
-          <SegmentedControl
-            v-model="searchMode"
-            :options="[{ value: 'quick', label: 'Quick Search' }, { value: 'advanced', label: 'Advanced Search' }]"
-            class="mb-4"
-          />
+      <div v-else class="mx-auto flex h-full w-full max-w-300 min-h-0 flex-col px-6 sm:px-8">
+        <!-- Header (non-scrolling) -->
+        <div class="shrink-0 pt-6">
+          <h2 class="font-display text-xl font-bold tracking-tight">Search your collection</h2>
+          <p v-if="isLoading" class="mt-4 italic text-ink-soft">Loading cards…</p>
+          <template v-else>
+            <SegmentedControl
+              v-model="searchMode"
+              :options="[{ value: 'quick', label: 'Quick Search' }, { value: 'advanced', label: 'Advanced Search' }]"
+              class="mt-4 mb-4"
+            />
 
           <!-- Quick search -->
           <div v-if="searchMode === 'quick'" class="max-w-xl">
@@ -791,6 +793,14 @@ onMounted(async () => {
             </div>
           </div>
 
+            <p v-if="filteredCards.length > 0" class="mt-4 text-sm text-ink-faint tabular-nums">
+              {{ filteredCards.length }} {{ filteredCards.length === 1 ? 'card' : 'cards' }} · sorted by set
+            </p>
+          </template>
+        </div>
+
+        <!-- Scrollable results region (virtualizer scroll element) -->
+        <div v-if="!isLoading" ref="scrollEl" class="min-h-0 flex-1 overflow-y-auto pb-8 pt-4">
           <div v-if="searchMode === 'quick' && debouncedSearchQuery && filteredCards.length === 0" class="py-6 text-center text-ink-soft">
             No cards found matching "{{ debouncedSearchQuery }}"
           </div>
@@ -803,75 +813,31 @@ onMounted(async () => {
             No cards found matching the selected filters
           </div>
 
-          <div v-else-if="filteredCards.length > 0" class="results">
-            <h3>
-              Results ({{ filteredCards.length }})
-              <span v-if="totalPages > 1" class="pagination-info">
-                - Page {{ currentPage }} of {{ totalPages }}
-              </span>
-            </h3>
-            <div class="card-grid">
-              <div v-for="result in paginatedResults" :key="`${result.segmentId}:${result.cardIndex}`" class="card-item">
-                <img
-                  v-if="result.card.image_uris?.normal || result.card.card_faces?.[0]?.image_uris?.normal"
-                  :src="result.card.image_uris?.normal || result.card.card_faces?.[0]?.image_uris?.normal"
-                  :alt="result.card.name"
-                  class="card-image"
-                  :class="{ 'card-image-missing': !result.isOwned }"
+          <div
+            v-else-if="filteredCards.length > 0"
+            :style="{ height: rowVirtualizer.getTotalSize() + 'px', position: 'relative', width: '100%' }"
+          >
+            <div
+              v-for="vRow in rowVirtualizer.getVirtualItems()"
+              :key="vRow.index"
+              :data-index="vRow.index"
+              :ref="measureRow"
+              :style="{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vRow.start}px)` }"
+            >
+              <div class="grid gap-4" :style="{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }">
+                <CardTile
+                  v-for="result in resultRows[vRow.index]"
+                  :key="`${result.segmentId}:${result.cardIndex}`"
+                  :name="result.card.name"
+                  :set="result.card.set.toUpperCase()"
+                  :number="result.card.collector_number"
+                  :color="colorOf(result.card)"
+                  :rarity="rarityLabel(result.card.rarity)"
+                  :status="result.isOwned ? 'owned' : result.isSkipped ? 'skipped' : 'missing'"
+                  :image="result.card.image_uris?.normal || result.card.card_faces?.[0]?.image_uris?.normal"
+                  :location="locationLabel(result.segmentId, result.cardIndex)"
                 />
-                <div class="card-info">
-                  <div class="card-name">{{ result.card.name }}</div>
-                  <div class="card-details">
-                    {{ result.card.set.toUpperCase() }} {{ result.card.collector_number.padStart(4, '0') }}
-                  </div>
-                  <div class="card-segment">{{ result.segmentName }}</div>
-                  <div v-if="getCardLocation(result.segmentId, result.cardIndex)" class="card-location">
-                    <div>{{ getCardLocation(result.segmentId, result.cardIndex)!.binderName }}</div>
-                    <div>Page {{ getCardLocation(result.segmentId, result.cardIndex)!.pageNumber }}, Slot {{ getCardLocation(result.segmentId, result.cardIndex)!.slotOnPage }}</div>
-                  </div>
-                  <div v-else-if="!placementResult" class="card-location-missing">
-                    No binder configured
-                  </div>
-                  <div class="card-status">
-                    <span v-if="result.isOwned" class="status-owned">✓ Owned</span>
-                    <span v-else-if="result.isSkipped" class="status-skipped">⊘ Skipped</span>
-                    <span v-else class="status-missing">Missing</span>
-                  </div>
-                </div>
               </div>
-            </div>
-
-            <!-- Pagination controls -->
-            <div v-if="totalPages > 1" class="pagination">
-              <button
-                @click="goToPage(currentPage - 1)"
-                :disabled="currentPage === 1"
-                class="pagination-btn"
-              >
-                Previous
-              </button>
-
-              <div class="pagination-pages">
-                <template v-for="(page, index) in visiblePages" :key="index">
-                  <span v-if="page === null" class="pagination-ellipsis">...</span>
-                  <button
-                    v-else
-                    @click="goToPage(page)"
-                    class="pagination-page"
-                    :class="{ active: page === currentPage }"
-                  >
-                    {{ page }}
-                  </button>
-                </template>
-              </div>
-
-              <button
-                @click="goToPage(currentPage + 1)"
-                :disabled="currentPage === totalPages"
-                class="pagination-btn"
-              >
-                Next
-              </button>
             </div>
           </div>
         </div>
@@ -890,186 +856,10 @@ onMounted(async () => {
 
 .main-content {
   flex: 1;
-  overflow-y: auto;
-  padding: 2rem;
-}
-
-.search-section {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-
-.results {
-  margin-top: 2rem;
-}
-
-.results h3 {
-  margin: 0 0 1rem 0;
-  font-size: 1.125rem;
-  color: #666;
-}
-
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1rem;
-}
-
-.card-item {
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  overflow: hidden;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.card-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-.card-image {
-  width: 100%;
-  display: block;
-}
-
-.card-image-missing {
-  filter: grayscale(50%);
-  opacity: 0.6;
-}
-
-.card-info {
-  padding: 0.75rem;
-}
-
-.card-name {
-  font-weight: 500;
-  color: #333;
-  margin-bottom: 0.25rem;
-  font-size: 0.875rem;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  min-height: 2.275rem;
-}
-
-.card-details {
-  font-size: 0.75rem;
-  color: #666;
-}
-
-.card-segment {
-  font-size: 0.75rem;
-  color: #888;
-  margin-top: 0.25rem;
-  font-style: italic;
-}
-
-.card-location {
-  font-size: 0.7rem;
-  color: #4a90d9;
-  margin-top: 0.25rem;
-  font-weight: 500;
-  font-family: monospace;
-}
-
-.card-location-missing {
-  font-size: 0.7rem;
-  color: #999;
-  margin-top: 0.25rem;
-  font-style: italic;
-}
-
-.card-status {
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-}
-
-.status-owned {
-  color: #28a745;
-  font-weight: 500;
-}
-
-.status-skipped {
-  color: #dc3545;
-  font-weight: 500;
-}
-
-.status-missing {
-  color: #999;
-}
-
-.pagination-info {
-  font-size: 0.875rem;
-  color: #666;
-  font-weight: normal;
-}
-
-.pagination {
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  margin-top: 2rem;
-  padding: 1rem 0;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.pagination-btn {
-  padding: 0.5rem 1rem;
-  background: #4a90d9;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.pagination-btn:hover:not(:disabled) {
-  background: #3a7bc8;
-}
-
-.pagination-btn:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-}
-
-.pagination-pages {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.pagination-ellipsis {
-  padding: 0.5rem 0.25rem;
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.pagination-page {
-  padding: 0.5rem 0.75rem;
-  background: #fff;
-  color: #333;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 40px;
-}
-
-.pagination-page:hover {
-  background: #f5f5f5;
-  border-color: #4a90d9;
-}
-
-.pagination-page.active {
-  background: #4a90d9;
-  color: white;
-  border-color: #4a90d9;
-}
 </style>
