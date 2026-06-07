@@ -8,7 +8,10 @@ import { debugCollectionData, cleanupInvalidKeys, findDuplicateCardsInSegments, 
 import { calculatePlacements, type PlacementResult } from '@/composables/usePlacement'
 import MultiSelectDropdown from '@/components/MultiSelectDropdown.vue'
 import { Button } from '@/components/ui/button'
-import { Database, TriangleAlert, Sparkles, ArrowRight } from 'lucide-vue-next'
+import { Input } from '@/components/ui/input'
+import { SegmentedControl } from '@/components/ui/segmented'
+import ManaChip from '@/components/common/ManaChip.vue'
+import { Database, TriangleAlert, Sparkles, ArrowRight, Search } from 'lucide-vue-next'
 
 const router = useRouter()
 
@@ -53,6 +56,25 @@ const hasNoSets = computed(() => plansStore.plans.length === 0)
 
 function navigateToSets() {
   router.push('/sets?create=true')
+}
+
+const rarityOptions = [
+  { value: 'common', label: 'Common' },
+  { value: 'uncommon', label: 'Uncommon' },
+  { value: 'rare', label: 'Rare' },
+  { value: 'mythic', label: 'Mythic' }
+]
+const ownershipOptions = [
+  { value: 'owned', label: 'Owned' },
+  { value: 'missing', label: 'Missing' },
+  { value: 'skipped', label: 'Skipped' }
+]
+const manaColors = ['W', 'U', 'B', 'R', 'G', 'C'] as const
+
+function toggleDraftColor(c: string) {
+  draftColorFilter.value = draftColorFilter.value.includes(c)
+    ? draftColorFilter.value.filter((x) => x !== c)
+    : [...draftColorFilter.value, c]
 }
 
 // Apply draft filters to active filters
@@ -657,178 +679,127 @@ onMounted(async () => {
 
       <!-- Search section (only shown when user has sets) -->
       <div v-else class="search-section">
-        <h2>Search Your Collection</h2>
-        <p v-if="isLoading" class="loading-message">Loading cards...</p>
-        <div v-else>
-          <!-- Mode toggle tabs -->
-          <div class="mode-tabs">
-            <button
-              @click="searchMode = 'quick'"
-              class="mode-tab"
-              :class="{ active: searchMode === 'quick' }"
-            >
-              Quick Search
-            </button>
-            <button
-              @click="searchMode = 'advanced'"
-              class="mode-tab"
-              :class="{ active: searchMode === 'advanced' }"
-            >
-              Advanced Search
-            </button>
-          </div>
+        <h2 class="font-display text-xl font-bold tracking-tight">Search your collection</h2>
+        <p v-if="isLoading" class="text-ink-soft italic mt-4">Loading cards…</p>
+        <div v-else class="mt-4">
+          <SegmentedControl
+            v-model="searchMode"
+            :options="[{ value: 'quick', label: 'Quick Search' }, { value: 'advanced', label: 'Advanced Search' }]"
+            class="mb-4"
+          />
 
           <!-- Quick search -->
-          <div v-if="searchMode === 'quick'" class="search-bar">
-            <input
-              v-model="searchQuery"
-              type="text"
-              placeholder="Search by card name..."
-              class="search-input"
-              autofocus
-            />
+          <div v-if="searchMode === 'quick'" class="max-w-xl">
+            <label for="quick-search" class="sr-only">Search by card name</label>
+            <div class="relative">
+              <Search :size="18" class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+              <Input id="quick-search" v-model="searchQuery" placeholder="Search by card name…" class="pl-10" />
+            </div>
           </div>
 
           <!-- Advanced search -->
-          <div v-else class="advanced-search-form">
-            <div class="form-row">
-              <div class="form-group">
-                <label>Card Name</label>
-                <input
-                  v-model="draftNameQuery"
-                  type="text"
-                  placeholder="Enter card name..."
-                  class="form-input"
-                />
+          <div v-else class="flex flex-col gap-5 rounded-xl border border-line bg-surface p-5 shadow-(--shadow-1)">
+            <div class="grid gap-5 sm:grid-cols-2">
+              <div class="flex flex-col gap-2">
+                <label for="adv-name" class="text-sm font-medium text-ink-soft">Card name</label>
+                <Input id="adv-name" v-model="draftNameQuery" placeholder="Enter card name…" />
               </div>
-              <div class="form-group">
-                <label>Card Type</label>
+              <div class="flex flex-col gap-2">
+                <label class="text-sm font-medium text-ink-soft">Card type</label>
                 <MultiSelectDropdown
                   v-model="draftTypeFilter"
                   :groups="typeOptions"
-                  placeholder="Select card types..."
+                  placeholder="Select card types…"
                 />
               </div>
             </div>
 
-            <div class="form-row">
-              <div class="form-group">
-                <label>Colors</label>
-                <div class="checkbox-group">
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="W" v-model="draftColorFilter" />
-                    <span class="color-symbol white">W</span>
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="U" v-model="draftColorFilter" />
-                    <span class="color-symbol blue">U</span>
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="B" v-model="draftColorFilter" />
-                    <span class="color-symbol black">B</span>
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="R" v-model="draftColorFilter" />
-                    <span class="color-symbol red">R</span>
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="G" v-model="draftColorFilter" />
-                    <span class="color-symbol green">G</span>
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="C" v-model="draftColorFilter" />
-                    <span class="color-symbol colorless">C</span>
-                  </label>
+            <div class="grid gap-5 sm:grid-cols-2">
+              <div class="flex flex-col gap-2">
+                <label class="text-sm font-medium text-ink-soft">Colors</label>
+                <div class="flex gap-2">
+                  <button
+                    v-for="c in manaColors"
+                    :key="c"
+                    type="button"
+                    :aria-pressed="draftColorFilter.includes(c)"
+                    :aria-label="c"
+                    class="rounded-full outline-none transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring"
+                    @click="toggleDraftColor(c)"
+                  >
+                    <ManaChip :color="c" :selected="draftColorFilter.includes(c)" :size="34" />
+                  </button>
                 </div>
-                <div class="commander-identity-toggle">
-                  <label class="checkbox-label">
-                    <input type="checkbox" v-model="draftCommanderIdentity" />
-                    Commander Identity (only show cards within selected colors)
-                  </label>
-                </div>
+                <label class="mt-1 inline-flex cursor-pointer items-center gap-2 text-sm text-ink-soft">
+                  <input type="checkbox" v-model="draftCommanderIdentity" class="h-4 w-4 accent-brand" />
+                  Commander identity (only cards within selected colors)
+                </label>
               </div>
 
-              <div class="form-group">
-                <label>Rarity</label>
-                <div class="checkbox-group">
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="common" v-model="draftRarityFilter" />
-                    Common
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="uncommon" v-model="draftRarityFilter" />
-                    Uncommon
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="rare" v-model="draftRarityFilter" />
-                    Rare
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="mythic" v-model="draftRarityFilter" />
-                    Mythic
+              <div class="flex flex-col gap-2">
+                <label class="text-sm font-medium text-ink-soft">Rarity</label>
+                <div class="flex flex-wrap gap-x-4 gap-y-2">
+                  <label v-for="r in rarityOptions" :key="r.value" class="inline-flex cursor-pointer items-center gap-2 text-sm text-ink-soft">
+                    <input type="checkbox" :value="r.value" v-model="draftRarityFilter" class="h-4 w-4 accent-brand" />
+                    {{ r.label }}
                   </label>
                 </div>
               </div>
             </div>
 
-            <div class="form-row">
-              <div class="form-group">
-                <label>Mana Value</label>
-                <div class="range-inputs">
+            <div class="grid gap-5 sm:grid-cols-2">
+              <div class="flex flex-col gap-2">
+                <label class="text-sm font-medium text-ink-soft">Mana value</label>
+                <div class="flex items-center gap-2">
                   <input
                     v-model.number="draftCmcMin"
                     type="number"
-                    placeholder="Min"
-                    class="form-input small"
+                    inputmode="numeric"
                     min="0"
+                    placeholder="Min"
+                    aria-label="Minimum mana value"
+                    class="h-11 w-24 rounded-md border border-input bg-surface-2 px-3.5 text-base text-foreground placeholder:text-ink-faint outline-none transition-colors focus-visible:border-brand focus-visible:ring-4 focus-visible:ring-(--accent-glow)"
                   />
-                  <span class="range-separator">to</span>
+                  <span class="text-sm text-ink-faint">to</span>
                   <input
                     v-model.number="draftCmcMax"
                     type="number"
-                    placeholder="Max"
-                    class="form-input small"
+                    inputmode="numeric"
                     min="0"
+                    placeholder="Max"
+                    aria-label="Maximum mana value"
+                    class="h-11 w-24 rounded-md border border-input bg-surface-2 px-3.5 text-base text-foreground placeholder:text-ink-faint outline-none transition-colors focus-visible:border-brand focus-visible:ring-4 focus-visible:ring-(--accent-glow)"
                   />
                 </div>
               </div>
 
-              <div class="form-group">
-                <label>Ownership Status</label>
-                <div class="checkbox-group">
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="owned" v-model="draftOwnershipFilter" />
-                    Owned
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="missing" v-model="draftOwnershipFilter" />
-                    Missing
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" value="skipped" v-model="draftOwnershipFilter" />
-                    Skipped
+              <div class="flex flex-col gap-2">
+                <label class="text-sm font-medium text-ink-soft">Ownership</label>
+                <div class="flex flex-wrap gap-x-4 gap-y-2">
+                  <label v-for="o in ownershipOptions" :key="o.value" class="inline-flex cursor-pointer items-center gap-2 text-sm text-ink-soft">
+                    <input type="checkbox" :value="o.value" v-model="draftOwnershipFilter" class="h-4 w-4 accent-brand" />
+                    {{ o.label }}
                   </label>
                 </div>
               </div>
             </div>
 
-            <!-- Search button for advanced mode -->
-            <div class="search-actions">
-              <button @click="applyAdvancedFilters" class="btn btn-primary btn-search">
-                Search
-              </button>
+            <div class="flex justify-end border-t border-line pt-4">
+              <Button class="min-w-30" @click="applyAdvancedFilters">
+                <Search :size="18" /> Search
+              </Button>
             </div>
           </div>
 
-          <div v-if="searchMode === 'quick' && debouncedSearchQuery && filteredCards.length === 0" class="no-results">
+          <div v-if="searchMode === 'quick' && debouncedSearchQuery && filteredCards.length === 0" class="py-6 text-center text-ink-soft">
             No cards found matching "{{ debouncedSearchQuery }}"
           </div>
 
-          <div v-else-if="searchMode === 'advanced' && !advancedSearchTriggered" class="search-prompt">
+          <div v-else-if="searchMode === 'advanced' && !advancedSearchTriggered" class="py-8 text-center italic text-ink-faint">
             Set your filters and click Search to find cards
           </div>
 
-          <div v-else-if="searchMode === 'advanced' && advancedSearchTriggered && filteredCards.length === 0" class="no-results">
+          <div v-else-if="searchMode === 'advanced' && advancedSearchTriggered && filteredCards.length === 0" class="py-6 text-center text-ink-soft">
             No cards found matching the selected filters
           </div>
 
@@ -928,261 +899,6 @@ onMounted(async () => {
   margin: 0 auto;
 }
 
-.search-section h2 {
-  margin: 0 0 1rem 0;
-  font-size: 1.25rem;
-  color: #333;
-}
-
-.mode-tabs {
-  display: flex;
-  gap: 0;
-  margin-bottom: 1rem;
-  border-bottom: 2px solid #ddd;
-}
-
-.mode-tab {
-  padding: 0.75rem 1.5rem;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  font-size: 1rem;
-  color: #666;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.mode-tab:hover {
-  color: #333;
-  background: #f9f9f9;
-}
-
-.mode-tab.active {
-  color: #4a90d9;
-  border-bottom-color: #4a90d9;
-  font-weight: 500;
-}
-
-.search-bar {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.advanced-search-form {
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1rem;
-}
-
-.search-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #ddd;
-}
-
-.btn-search {
-  min-width: 120px;
-  padding: 0.5rem 1.5rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.form-row:last-child {
-  margin-bottom: 0;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.form-group label {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #333;
-}
-
-.form-input {
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 0.875rem;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #4a90d9;
-}
-
-.form-input.small {
-  width: 80px;
-}
-
-.checkbox-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.875rem;
-  color: #666;
-  cursor: pointer;
-}
-
-.checkbox-label input[type="checkbox"] {
-  cursor: pointer;
-}
-
-.commander-identity-toggle {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid #eee;
-}
-
-.commander-identity-toggle .checkbox-label {
-  font-size: 0.875rem;
-  color: #333;
-}
-
-.color-symbol {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  font-weight: bold;
-  font-size: 0.75rem;
-  border: 2px solid #333;
-}
-
-.color-symbol.white {
-  background: #f9fafb;
-  color: #333;
-}
-
-.color-symbol.blue {
-  background: #0e68ab;
-  color: white;
-}
-
-.color-symbol.black {
-  background: #150b00;
-  color: white;
-}
-
-.color-symbol.red {
-  background: #d3202a;
-  color: white;
-}
-
-.color-symbol.green {
-  background: #00733e;
-  color: white;
-}
-
-.color-symbol.colorless {
-  background: #ccc;
-  color: #333;
-}
-
-.range-inputs {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.range-separator {
-  font-size: 0.875rem;
-  color: #666;
-}
-
-.search-input {
-  flex: 1;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #4a90d9;
-}
-
-.btn {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-primary {
-  background: #4a90d9;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #3a7bc8;
-}
-
-.btn-primary:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #6c757d;
-  color: white;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #5a6268;
-}
-
-.loading-message {
-  color: #666;
-  font-style: italic;
-}
-
-.no-results {
-  padding: 1rem;
-  color: #666;
-  text-align: center;
-}
-
-.search-prompt {
-  padding: 2rem 1rem;
-  color: #888;
-  text-align: center;
-  font-style: italic;
-}
-
-.max-results-hint {
-  font-size: 0.875rem;
-  color: #999;
-  font-weight: normal;
-}
 
 .results {
   margin-top: 2rem;
