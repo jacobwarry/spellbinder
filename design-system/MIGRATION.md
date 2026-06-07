@@ -1,6 +1,21 @@
 # Spellbinder — Migration Plan
 
-How we move the app onto the design system in small, auditable, independently-shippable steps. Reference: [MASTER.md](MASTER.md), [SCREENS.md](SCREENS.md), `pages/*`. **This is a plan — nothing here has been executed.**
+How we move the app onto the design system in small, auditable, independently-shippable steps. Reference: [MASTER.md](MASTER.md), [SCREENS.md](SCREENS.md), `pages/*`.
+
+---
+
+## 0. Refactor / abstraction targets (decided: interleave, separate commits)
+
+The views grew large with mixed concerns. Extract logic into composables **in the phase that already touches that code**, each as a **separate commit** from the UI-token work (clean audit trail). Extracted composables are meaningful-test targets (pure-ish logic).
+
+| Target | Extract to | Where | Why |
+|---|---|---|---|
+| Placement orchestration (`recalculateAllPlacements`, `allPlacements`, `locationMap`/`getCardLocation`, `cardsPerBinder`, `ownedCardsPerBinder`) — duplicated in HomePage **and** PlanEditor | `usePlacements()` / `useCardLocations()` | P8 (touches PlanEditor) | Removes real duplication; shrinks both views |
+| Binder spread/zoom/nav (`isSpreadView`, `leftPageNumber`, `rightPageNumber`, `currentPagePlacements`, page nav) | `useBinderSpread()` + pure `decideLayout()` | **P10** | The heart of PlanEditor bloat; rebuilt anyway — don't port messy inline logic |
+| HomePage quick/advanced filter + `allCards` index | `useCollectionSearch()` | cleanup pass | Tangled filter logic in the view |
+| DecksView 3-mode linking (`collectionMatches`, replace/scryfall search, link/unlink) | `useDeckLinking()` | cleanup pass | Tangled linking logic |
+| `debugCollection.ts` (342 lines, attached to `window` in HomePage) | gate behind `import.meta.env.DEV` | quick win | Dev tooling shouldn't ship to prod |
+| Inline `image_uris?.normal || card_faces[0]…` in HomePage/DecksView | reuse existing `getCardImageUri()` (scryfall.ts) | quick win | Already exists; stop reimplementing |
 
 ---
 
