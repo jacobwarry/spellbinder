@@ -1,18 +1,10 @@
 <script setup lang="ts">
 import { Check, X, Plus } from 'lucide-vue-next'
-import type { Mana, Ownership } from '@/components/common/types'
+import type { Mana, BinderSlotCard } from '@/components/common/types'
 
 defineProps<{
   slotNumber: number
-  card?: {
-    name: string
-    set: string
-    number: string
-    color: Mana
-    status: Ownership
-    rarity?: string
-    image?: string
-  }
+  card?: BinderSlotCard
 }>()
 
 defineEmits<{

@@ -12,6 +12,8 @@ import { SegmentedControl } from '@/components/ui/segmented'
 import { Dialog } from '@/components/ui/dialog'
 import CardActionSheet from '@/components/binder/CardActionSheet.vue'
 import BinderSlot from '@/components/binder/BinderSlot.vue'
+import BinderSpread from '@/components/binder/BinderSpread.vue'
+import type { BinderSlotCard } from '@/components/common/types'
 import ManaChip from '@/components/common/ManaChip.vue'
 import OwnershipBadge from '@/components/common/OwnershipBadge.vue'
 import StatCard from '@/components/common/StatCard.vue'
@@ -36,6 +38,30 @@ function toggleMana(c: string) {
   selectedMana.value = selectedMana.value.includes(c)
     ? selectedMana.value.filter((x) => x !== c)
     : [...selectedMana.value, c]
+}
+
+const demoColors = ['R', 'U', 'G', 'B', 'W', 'C'] as const
+const demoStatuses = ['owned', 'missing', 'skipped'] as const
+const demoNames = ['Lightning Bolt', 'Counterspell', 'Llanowar Elves', 'Sol Ring', 'Wrath of God', 'Demonic Tutor']
+const demoSets = ['LEA', 'MH2', 'C21', 'STA', 'M19', 'LEB']
+const binderPages: (BinderSlotCard | null)[][] = Array.from({ length: 6 }, (_, p) =>
+  Array.from({ length: 9 }, (_, s) => {
+    const i = p * 9 + s
+    if (i % 7 === 3) return null
+    return {
+      name: demoNames[i % 6]!,
+      set: demoSets[i % 6]!,
+      number: String(((i * 13) % 320) + 1).padStart(3, '0'),
+      color: demoColors[i % 6]!,
+      status: demoStatuses[i % 3]!,
+      rarity: ['C', 'U', 'R', 'M'][i % 4]!
+    }
+  })
+)
+const binderSelectMsg = ref('')
+function onBinderSelect(page: number, slot: number) {
+  binderSelectMsg.value = `Selected page ${page}, slot ${slot + 1}`
+  actionSheetOpen.value = true
 }
 
 const counts = { w: 377, u: 592, b: 511, r: 458, g: 484, c: 269 }
@@ -203,6 +229,22 @@ const sampleCards = [
           @add-spacer="demoSpacer++"
           @remove-spacer="demoSpacer = Math.max(0, demoSpacer - 1)"
         />
+      </section>
+
+      <!-- binder spread -->
+      <section class="flex flex-col gap-4">
+        <h2 class="font-display text-xl font-bold">Binder spread <span class="text-ink-faint text-sm font-normal">— resize the window to feel spread ↔ single</span></h2>
+        <p v-if="binderSelectMsg" class="text-sm text-ink-soft">{{ binderSelectMsg }}</p>
+        <div class="h-150 overflow-hidden rounded-lg border border-line">
+          <BinderSpread
+            name="Binder A — Mythics"
+            :page-count="6"
+            :slots-per-page="9"
+            :pages="binderPages"
+            :paused="actionSheetOpen"
+            @select="onBinderSelect"
+          />
+        </div>
       </section>
 
       <!-- dialog -->
