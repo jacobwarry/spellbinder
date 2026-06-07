@@ -2,6 +2,9 @@
 import { ref, onMounted, computed } from 'vue'
 import type { ScryfallCard, ScryfallSet } from '@/types'
 import { fetchSetCards, getCardImageUri, sortByCollectorNumber } from '@/api/scryfall'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Check } from 'lucide-vue-next'
 
 const props = defineProps<{
   set: ScryfallSet
@@ -65,186 +68,43 @@ function confirm() {
 </script>
 
 <template>
-  <div class="card-picker">
-    <div class="picker-header">
-      <h3>{{ set.name }}</h3>
-      <div class="picker-actions">
-        <button @click="selectAll" class="btn-small">Select All</button>
-        <button @click="selectNone" class="btn-small">Select None</button>
-        <span class="selection-count">{{ selectedIds.size }} selected</span>
+  <div class="flex h-full flex-col gap-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h3 class="font-display text-lg font-bold tracking-tight">{{ set.name }}</h3>
+      <div class="flex items-center gap-2">
+        <Button variant="outline" size="sm" @click="selectAll">Select all</Button>
+        <Button variant="outline" size="sm" @click="selectNone">Select none</Button>
+        <span class="text-sm tabular-nums text-ink-soft">{{ selectedIds.size }} selected</span>
       </div>
     </div>
 
-    <input
-      v-model="searchQuery"
-      type="text"
-      placeholder="Search cards..."
-      class="search-input"
-    />
+    <Input v-model="searchQuery" placeholder="Search cards…" />
 
-    <div v-if="loading" class="loading">Loading cards...</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
-    <div v-else class="card-grid">
-      <button
-        v-for="card in filteredCards"
-        :key="card.id"
-        @click="toggleCard(card.id)"
-        class="card-item"
-        :class="{ selected: selectedIds.has(card.id) }"
-      >
-        <img
-          :src="getCardImageUri(card, 'normal') ?? ''"
-          :alt="card.name"
-          class="card-image"
-        />
-        <div class="card-number">#{{ card.collector_number }}</div>
-      </button>
+    <div v-if="loading" class="py-8 text-center text-ink-soft">Loading cards…</div>
+    <div v-else-if="error" class="py-8 text-center text-skipped">{{ error }}</div>
+    <div v-else class="min-h-0 flex-1 overflow-y-auto">
+      <div class="grid gap-2" style="grid-template-columns: repeat(auto-fill, minmax(100px, 1fr))">
+        <button
+          v-for="card in filteredCards"
+          :key="card.id"
+          type="button"
+          class="relative overflow-hidden rounded-md border-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+          :class="selectedIds.has(card.id) ? 'border-brand' : 'border-transparent hover:border-line-strong'"
+          @click="toggleCard(card.id)"
+        >
+          <img :src="getCardImageUri(card, 'normal') ?? ''" :alt="card.name" loading="lazy" class="block w-full" />
+          <span class="absolute bottom-1 right-1 rounded-xs bg-black/70 px-1 py-0.5 text-[10px] font-semibold tabular-nums text-white">#{{ card.collector_number }}</span>
+          <span
+            v-if="selectedIds.has(card.id)"
+            class="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-brand text-primary-foreground"
+          ><Check :size="12" :stroke-width="3" /></span>
+        </button>
+      </div>
     </div>
 
-    <div class="picker-footer">
-      <button @click="$emit('cancel')" class="btn btn-secondary">Cancel</button>
-      <button @click="confirm" class="btn btn-primary" :disabled="selectedIds.size === 0">
-        Add {{ selectedIds.size }} Cards
-      </button>
+    <div class="flex justify-end gap-2 border-t border-line pt-3">
+      <Button variant="ghost" @click="$emit('cancel')">Cancel</Button>
+      <Button :disabled="selectedIds.size === 0" @click="confirm">Add {{ selectedIds.size }} cards</Button>
     </div>
   </div>
 </template>
-
-<style scoped>
-.card-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  height: 100%;
-}
-
-.picker-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.picker-header h3 {
-  margin: 0;
-}
-
-.picker-actions {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.selection-count {
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.search-input {
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.loading,
-.error {
-  padding: 2rem;
-  text-align: center;
-  color: #666;
-}
-
-.error {
-  color: #c00;
-}
-
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 0.5rem;
-  overflow-y: auto;
-  max-height: calc(100vh - 250px);
-  padding: 0.5rem;
-}
-
-.card-item {
-  border: 2px solid transparent;
-  border-radius: 4px;
-  padding: 0;
-  background: none;
-  cursor: pointer;
-  position: relative;
-}
-
-.card-item.selected {
-  border-color: #4a90d9;
-}
-
-.card-image {
-  width: 100%;
-  border-radius: 4px;
-  display: block;
-}
-
-.card-number {
-  position: absolute;
-  bottom: 4px;
-  right: 4px;
-  background: rgba(0, 0, 0, 0.7);
-  color: white;
-  font-size: 0.625rem;
-  padding: 2px 4px;
-  border-radius: 2px;
-}
-
-.picker-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eee;
-}
-
-.btn-small {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.875rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #f5f5f5;
-  cursor: pointer;
-}
-
-.btn-small:hover {
-  background: #e5e5e5;
-}
-
-.btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.btn-primary {
-  background: #4a90d9;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #3a7bc8;
-}
-
-.btn-primary:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #e5e5e5;
-  color: #333;
-}
-
-.btn-secondary:hover {
-  background: #d5d5d5;
-}
-</style>
