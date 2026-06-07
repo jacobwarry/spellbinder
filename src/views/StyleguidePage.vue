@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SegmentedControl } from '@/components/ui/segmented'
 import { Dialog } from '@/components/ui/dialog'
+import CardActionSheet from '@/components/binder/CardActionSheet.vue'
+import BinderSlot from '@/components/binder/BinderSlot.vue'
 import ManaChip from '@/components/common/ManaChip.vue'
 import OwnershipBadge from '@/components/common/OwnershipBadge.vue'
 import StatCard from '@/components/common/StatCard.vue'
@@ -26,6 +28,8 @@ const manaKeys = ['W', 'U', 'B', 'R', 'G', 'C'] as const
 
 const searchDemo = ref('')
 const dialogOpen = ref(false)
+const actionSheetOpen = ref(false)
+const demoSpacer = ref(1)
 const mode = ref<'quick' | 'advanced'>('quick')
 const selectedMana = ref<string[]>(['W', 'R'])
 function toggleMana(c: string) {
@@ -172,6 +176,33 @@ const sampleCards = [
             </div>
           </div>
         </div>
+      </section>
+
+      <!-- binder slot + action sheet -->
+      <section class="flex flex-col gap-4">
+        <h2 class="font-display text-xl font-bold">Binder slot + action sheet</h2>
+        <div class="grid max-w-md grid-cols-6 gap-3">
+          <BinderSlot :slot-number="1" :card="{ name: 'Lightning Bolt', set: 'LEA', number: '161', color: 'R', status: 'owned', rarity: 'C' }" @select="actionSheetOpen = true" />
+          <BinderSlot :slot-number="2" :card="{ name: 'Counterspell', set: 'MH2', number: '267', color: 'U', status: 'missing' }" />
+          <BinderSlot :slot-number="3" :card="{ name: 'Swords to Plowshares', set: 'STA', number: '011', color: 'W', status: 'skipped' }" />
+          <BinderSlot :slot-number="4" />
+          <BinderSlot :slot-number="5" :card="{ name: 'Dark Ritual', set: 'LEB', number: '119', color: 'B', status: 'owned' }" />
+          <BinderSlot :slot-number="6" :card="{ name: 'Sol Ring', set: 'C21', number: '044', color: 'C', status: 'owned' }" />
+        </div>
+        <Button variant="secondary" class="self-start" @click="actionSheetOpen = true">Open card action sheet</Button>
+        <CardActionSheet
+          v-model:open="actionSheetOpen"
+          name="Lightning Bolt"
+          set="LEA"
+          number="161"
+          rarity="Common"
+          color="R"
+          status="owned"
+          location="Binder A · P3 · S2"
+          :spacer-count="demoSpacer"
+          @add-spacer="demoSpacer++"
+          @remove-spacer="demoSpacer = Math.max(0, demoSpacer - 1)"
+        />
       </section>
 
       <!-- dialog -->

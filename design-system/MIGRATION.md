@@ -136,9 +136,10 @@ Rule: **test logic and data integrity, not the DOM.** Mostly Vitest unit tests o
 - **Do:** the "managing the binders" activity — binder/box list, add-binder & add-box forms, segment list, ordering (DnD + keyboard alt), create-set flow, pickers/selectors as Dialogs, editor responsive IA (panel/drawer/tabs), empty states. Placement preview **temporarily keeps the legacy `BinderPageGrid`**.
 - **Win:** editor chrome + all management themed; ordering works with keyboard alt; invariant preserved.
 
-### Phase 9 — Binder slot + card action sheet *(component, drop-in)*
-- **Do:** `BinderSlot` (presentational) + `CardActionSheet` (owned/skip/blanks-stepper/Scryfall/remove). Wire the sheet into the **existing** grid first to validate the interaction; remove the hover-only ⋮ menu.
-- **Win:** tap-a-card → sheet everywhere; touch-friendly; legacy menu gone. Small, high-value PR.
+### Phase 9 — Binder slot + card action sheet *(components)*
+- **Do:** `Sheet` primitive + `BinderSlot` (presentational) + `CardActionSheet` (owned/skip/blanks-stepper/Scryfall/remove); demo in `/styleguide`.
+- **Win:** the touch-friendly slot + action-sheet pattern, auditable in isolation.
+- **Done (note):** built the `Sheet` primitive (reka-ui, slide-up + swipe-down dismiss) + `BinderSlot` + `CardActionSheet` (presentational, emits actions so the consumer keeps the index-shift invariant), demoed in the styleguide. **Deviation:** did *not* rewire the legacy `BinderPageGrid` (it's replaced wholesale in P10) — the hover-⋮ menu dies in P10 when `BinderSpread` adopts these components, avoiding throwaway wiring.
 
 ### Phase 10 — Binder spread viewer (the actual binders)
 - **Do:** `BinderSpread` — fit-to-viewport (ResizeObserver), spread↔single, cover pages, spine/rings, page-turn (buttons/arrows/swipe), overview mode; **remove in-app zoom**. Replace `BinderPageGrid` in the editor preview and add the **deep-linkable standalone route** (`/sets/:id/binder/:binderId?page=n`).
