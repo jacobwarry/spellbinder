@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { useSegmentsStore, useCollectionStore, useBindersStore, usePlansStore } from '@/stores'
 import { getCachedCards } from '@/api/scryfall'
 import type { ScryfallCard } from '@/types'
-import { debugCollectionData, cleanupInvalidKeys, findDuplicateCardsInSegments, findOwnershipInconsistencies, fixOwnershipInconsistencies, cleanupOrphanedSegments } from '@/utils/debugCollection'
 import { useAllPlacements, buildCardLocationMap } from '@/composables/useAllPlacements'
 import MultiSelectDropdown from '@/components/MultiSelectDropdown.vue'
 import { Button } from '@/components/ui/button'
@@ -511,17 +510,21 @@ async function clearCardCache() {
 }
 
 onMounted(async () => {
-  // Expose debug functions to console
-  ;(window as any).debugCollection = debugCollectionData
-  ;(window as any).cleanupCollection = cleanupInvalidKeys
-  ;(window as any).findDuplicates = findDuplicateCardsInSegments
-  ;(window as any).checkOwnership = findOwnershipInconsistencies
-  ;(window as any).fixOwnership = fixOwnershipInconsistencies
-  ;(window as any).cleanupOrphans = cleanupOrphanedSegments
-  ;(window as any).clearCache = clearCardCache
-  ;(window as any).checkPlacements = () => {
-    console.log('All placements (by plan):', allPlacements.value)
-    console.log('Plans:', plansStore.plans)
+  // Dev-only console helpers — dynamically imported so the debug module is
+  // tree-shaken out of the production bundle.
+  if (import.meta.env.DEV) {
+    const dbg = await import('@/utils/debugCollection')
+    ;(window as any).debugCollection = dbg.debugCollectionData
+    ;(window as any).cleanupCollection = dbg.cleanupInvalidKeys
+    ;(window as any).findDuplicates = dbg.findDuplicateCardsInSegments
+    ;(window as any).checkOwnership = dbg.findOwnershipInconsistencies
+    ;(window as any).fixOwnership = dbg.fixOwnershipInconsistencies
+    ;(window as any).cleanupOrphans = dbg.cleanupOrphanedSegments
+    ;(window as any).clearCache = clearCardCache
+    ;(window as any).checkPlacements = () => {
+      console.log('All placements (by plan):', allPlacements.value)
+      console.log('Plans:', plansStore.plans)
+    }
   }
 
   // Prevent concurrent fetches
