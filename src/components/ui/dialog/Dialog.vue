@@ -9,19 +9,28 @@ import {
   DialogClose
 } from 'reka-ui'
 import { X } from 'lucide-vue-next'
+import { cn } from '@/lib/utils'
 
-defineProps<{ title: string; description?: string }>()
+const props = withDefaults(
+  defineProps<{ title: string; description?: string; size?: 'default' | 'lg' | 'xl' }>(),
+  { size: 'default' }
+)
 const open = defineModel<boolean>('open', { default: false })
+
+const sizeClass = { default: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-3xl' }[props.size]
 </script>
 
 <template>
   <DialogRoot v-model:open="open">
     <DialogPortal>
       <DialogOverlay
-        class="fixed inset-0 z-40 bg-[var(--scrim)] backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0"
+        class="fixed inset-0 z-40 bg-(--scrim) backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0"
       />
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-surface p-6 shadow-(--shadow-2) focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95"
+        :class="cn(
+          'fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-line bg-surface p-6 shadow-(--shadow-2) focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95',
+          sizeClass
+        )"
       >
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">

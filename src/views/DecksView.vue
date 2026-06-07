@@ -8,7 +8,8 @@ import type { Deck, ScryfallCard } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog } from '@/components/ui/dialog'
-import { Layers, Download, Trash2 } from 'lucide-vue-next'
+import { SegmentedControl } from '@/components/ui/segmented'
+import { Layers, Download, Trash2, ArrowLeft } from 'lucide-vue-next'
 
 interface CollectionMatch {
   card: ScryfallCard
@@ -549,42 +550,46 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
     </main>
 
     <!-- Deck Detail View -->
-    <main v-else class="main-content deck-detail">
-      <div class="deck-detail-header">
-        <button @click="backToList" class="btn btn-secondary">&larr; Back</button>
-        <h2>{{ selectedDeck.name }}</h2>
-        <div class="deck-completion">
-          {{ getDeckCompletion(selectedDeck).owned }}/{{ getDeckCompletion(selectedDeck).total }}
-          ({{ getDeckCompletion(selectedDeck).percentage }}% complete)
+    <main v-else class="main-content">
+      <div class="mx-auto max-w-6xl">
+        <div class="mb-6 flex flex-wrap items-center gap-4">
+          <Button variant="ghost" @click="backToList">
+            <ArrowLeft :size="18" /> Back
+          </Button>
+          <h2 class="font-display text-2xl font-bold tracking-tight">{{ selectedDeck.name }}</h2>
+          <span class="ml-auto text-sm text-ink-soft tabular-nums">
+            {{ getDeckCompletion(selectedDeck).owned }}/{{ getDeckCompletion(selectedDeck).total }}
+            ({{ getDeckCompletion(selectedDeck).percentage }}% complete)
+          </span>
         </div>
-      </div>
 
-      <div v-if="isLoadingCards" class="loading">Loading cards...</div>
+        <div v-if="isLoadingCards" class="py-10 text-center text-ink-soft">Loading cards…</div>
 
-      <div v-else class="deck-cards">
-        <div v-for="[category, cards] in groupedCards" :key="category" class="card-category">
-          <h3 class="category-title">{{ category }} ({{ cards.length }})</h3>
-          <div class="card-grid">
-            <div
-              v-for="card in cards"
-              :key="card.id"
-              class="deck-card-item"
-              :class="{ 'card-missing': !isDeckCardOwned(card) }"
-              @click="openCardSearch(card)"
-              :title="`${card.name} - Click to search in collection`"
-            >
-              <img
-                v-if="getCardImage(card)"
-                :src="getCardImage(card)"
-                :alt="card.name"
-                class="card-image"
-              />
-              <div class="card-overlay">
-                <span class="card-quantity" v-if="card.quantity > 1">x{{ card.quantity }}</span>
-                <span class="card-status">
-                  {{ isDeckCardOwned(card) ? 'Owned' : 'Missing' }}
-                </span>
-              </div>
+        <div v-else class="flex flex-col gap-8">
+          <div v-for="[category, cards] in groupedCards" :key="category">
+            <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">
+              {{ category }} <span class="text-ink-faint">({{ cards.length }})</span>
+            </h3>
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
+              <button
+                v-for="card in cards"
+                :key="card.id"
+                class="group relative overflow-hidden rounded-lg border border-line outline-none transition hover:-translate-y-1 hover:shadow-(--shadow-2) focus-visible:ring-2 focus-visible:ring-ring"
+                :title="`${card.name} — click to link from your collection`"
+                @click="openCardSearch(card)"
+              >
+                <div class="relative aspect-63/88 bg-surface-2" :class="!isDeckCardOwned(card) && 'grayscale brightness-90'">
+                  <img v-if="getCardImage(card)" :src="getCardImage(card)" :alt="card.name" loading="lazy" class="absolute inset-0 h-full w-full object-cover" />
+                  <span v-else class="absolute inset-0 grid place-items-center p-2 text-center text-xs text-ink-faint">{{ card.name }}</span>
+                  <span v-if="card.quantity > 1" class="absolute right-1.5 top-1.5 rounded-md bg-[rgba(0,0,0,.7)] px-1.5 py-0.5 text-[11px] font-bold text-white tabular-nums">×{{ card.quantity }}</span>
+                </div>
+                <span
+                  class="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] font-semibold"
+                  :style="isDeckCardOwned(card)
+                    ? 'color:var(--owned);background:var(--owned-soft)'
+                    : 'color:var(--missing);background:var(--surface-2)'"
+                >{{ isDeckCardOwned(card) ? 'Owned' : 'Missing' }}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -613,174 +618,108 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
       </template>
     </Dialog>
 
-    <!-- Card Search Modal -->
-    <div v-if="showSearchModal" class="modal-overlay" @click.self="showSearchModal = false">
-      <div class="modal modal-wide">
-        <h2>{{ searchMode === 'scryfall' ? `All Printings of "${searchingCard?.name}"` : (searchMode === 'same' ? `Find "${searchingCard?.name}"` : 'Replace with Any Card') }}</h2>
-        <p class="modal-description">
-          {{ searchMode === 'scryfall'
-            ? 'Select any printing from Scryfall to use for this deck slot'
-            : (searchMode === 'same'
-              ? 'Select a card from your collection to link to this deck slot'
-              : 'Search for any card in your collection to use as a replacement') }}
-        </p>
+    <!-- Card link modal -->
+    <Dialog
+      v-if="searchingCard"
+      v-model:open="showSearchModal"
+      size="xl"
+      :title="searchMode === 'scryfall' ? `All printings of “${searchingCard.name}”` : (searchMode === 'same' ? `Find “${searchingCard.name}”` : 'Replace with any card')"
+      :description="searchMode === 'scryfall' ? 'Pick any printing from Scryfall for this deck slot.' : (searchMode === 'same' ? 'Pick a copy from your collection to link to this slot.' : 'Search your collection for a replacement card.')"
+    >
+      <SegmentedControl
+        v-model="searchMode"
+        :options="[{ value: 'same', label: 'In Collection' }, { value: 'any', label: 'Any in Collection' }, { value: 'scryfall', label: 'All Printings' }]"
+        class="mb-4"
+      />
 
-        <!-- Mode Toggle -->
-        <div class="search-mode-toggle">
-          <button
-            class="mode-btn"
-            :class="{ active: searchMode === 'same' }"
-            @click="searchMode = 'same'"
-          >
-            In Collection
-          </button>
-          <button
-            class="mode-btn"
-            :class="{ active: searchMode === 'any' }"
-            @click="searchMode = 'any'"
-          >
-            Any in Collection
-          </button>
-          <button
-            class="mode-btn"
-            :class="{ active: searchMode === 'scryfall' }"
-            @click="searchMode = 'scryfall'"
-          >
-            All Printings
-          </button>
-        </div>
+      <div v-if="searchMode === 'any'" class="mb-3">
+        <label for="link-search" class="sr-only">Search cards by name</label>
+        <Input id="link-search" v-model="replaceSearchQuery" placeholder="Search cards by name…" @input="searchCollectionCards" />
+        <p v-if="replaceSearchQuery.length > 0 && replaceSearchQuery.length < 2" class="mt-1 text-xs text-ink-faint">Type at least 2 characters to search.</p>
+      </div>
 
-        <!-- Search Input for "any" mode -->
-        <div v-if="searchMode === 'any'" class="replace-search">
-          <input
-            v-model="replaceSearchQuery"
-            type="text"
-            placeholder="Search cards by name..."
-            class="search-input"
-            @input="searchCollectionCards"
-          />
-          <p v-if="replaceSearchQuery.length > 0 && replaceSearchQuery.length < 2" class="search-hint">
-            Type at least 2 characters to search
-          </p>
-        </div>
+      <div class="max-h-[60vh] overflow-y-auto">
+        <div v-if="isSearchingCollection" class="py-8 text-center text-ink-soft">Searching collection…</div>
 
-        <div v-if="isSearchingCollection" class="loading">Searching collection...</div>
-
-        <!-- Same card mode results -->
+        <!-- In-collection (same card) -->
         <template v-else-if="searchMode === 'same'">
-          <div v-if="collectionMatches.length === 0" class="no-matches">
-            No copies of this card found in your collection.
-          </div>
-
-          <div v-else class="search-results">
-            <div
+          <p v-if="collectionMatches.length === 0" class="py-8 text-center text-ink-soft">No copies of this card found in your collection.</p>
+          <div v-else class="flex flex-col gap-2">
+            <button
               v-for="match in collectionMatches"
               :key="match.cardKey"
-              class="search-result-item"
-              :class="{ 'is-owned': match.isOwned }"
+              class="flex w-full items-center gap-3 rounded-lg border border-line bg-surface p-2.5 text-left outline-none transition-colors hover:border-brand hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
               @click="linkCardToCollection(searchingCard!.id, match.cardKey)"
             >
-              <img
-                v-if="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small"
-                :src="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small"
-                :alt="match.card.name"
-                class="search-result-image"
-              />
-              <div class="search-result-info">
-                <div class="search-result-name">{{ match.card.name }}</div>
-                <div class="search-result-set-name">{{ match.card.set_name }}</div>
-                <div class="search-result-set-code">{{ match.card.set.toUpperCase() }} {{ match.card.collector_number.padStart(4, '0') }}</div>
-                <div class="search-result-status" :class="match.isOwned ? 'owned' : 'missing'">
-                  {{ match.isOwned ? 'Owned' : 'Not Owned' }}
-                </div>
+              <img v-if="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small" :src="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small" :alt="match.card.name" class="h-14 w-10 shrink-0 rounded object-cover" />
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-semibold">{{ match.card.name }}</div>
+                <div class="truncate text-xs text-ink-faint">{{ match.card.set_name }}</div>
+                <div class="text-[11px] text-ink-faint tabular-nums">{{ match.card.set.toUpperCase() }} {{ match.card.collector_number.padStart(4, '0') }}</div>
               </div>
-            </div>
+              <span class="shrink-0 text-xs font-semibold" :style="match.isOwned ? 'color:var(--owned)' : 'color:var(--missing)'">{{ match.isOwned ? 'Owned' : 'Not owned' }}</span>
+            </button>
           </div>
         </template>
 
-        <!-- Replace with any card mode results -->
+        <!-- Any owned card -->
         <template v-else-if="searchMode === 'any'">
-          <div v-if="replaceSearchQuery.length < 2" class="no-matches">
-            Enter a card name to search your collection.
-          </div>
-          <div v-else-if="replaceSearchResults.length === 0" class="no-matches">
-            No cards found matching "{{ replaceSearchQuery }}".
-          </div>
-
-          <div v-else class="search-results">
-            <div
+          <p v-if="replaceSearchQuery.length < 2" class="py-8 text-center text-ink-soft">Enter a card name to search your collection.</p>
+          <p v-else-if="replaceSearchResults.length === 0" class="py-8 text-center text-ink-soft">No cards found matching “{{ replaceSearchQuery }}”.</p>
+          <div v-else class="flex flex-col gap-2">
+            <button
               v-for="match in replaceSearchResults"
               :key="match.cardKey"
-              class="search-result-item"
-              :class="{ 'is-owned': match.isOwned }"
+              class="flex w-full items-center gap-3 rounded-lg border border-line bg-surface p-2.5 text-left outline-none transition-colors hover:border-brand hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
               @click="linkCardToCollection(searchingCard!.id, match.cardKey)"
             >
-              <img
-                v-if="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small"
-                :src="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small"
-                :alt="match.card.name"
-                class="search-result-image"
-              />
-              <div class="search-result-info">
-                <div class="search-result-name">{{ match.card.name }}</div>
-                <div class="search-result-set-name">{{ match.card.set_name }}</div>
-                <div class="search-result-set-code">{{ match.card.set.toUpperCase() }} {{ match.card.collector_number.padStart(4, '0') }}</div>
-                <div class="search-result-status" :class="match.isOwned ? 'owned' : 'missing'">
-                  {{ match.isOwned ? 'Owned' : 'Not Owned' }}
-                </div>
+              <img v-if="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small" :src="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small" :alt="match.card.name" class="h-14 w-10 shrink-0 rounded object-cover" />
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-semibold">{{ match.card.name }}</div>
+                <div class="truncate text-xs text-ink-faint">{{ match.card.set_name }}</div>
+                <div class="text-[11px] text-ink-faint tabular-nums">{{ match.card.set.toUpperCase() }} {{ match.card.collector_number.padStart(4, '0') }}</div>
               </div>
-            </div>
-            <div v-if="replaceSearchResults.length >= 50" class="results-truncated">
-              Showing first 50 results. Refine your search for more specific results.
-            </div>
+              <span class="shrink-0 text-xs font-semibold" :style="match.isOwned ? 'color:var(--owned)' : 'color:var(--missing)'">{{ match.isOwned ? 'Owned' : 'Not owned' }}</span>
+            </button>
+            <p v-if="replaceSearchResults.length >= 50" class="py-2 text-center text-xs text-ink-faint">Showing first 50 results — refine your search for more.</p>
           </div>
         </template>
 
-        <!-- Scryfall all printings mode results -->
-        <template v-else-if="searchMode === 'scryfall'">
-          <div v-if="isSearchingScryfall" class="loading">Searching Scryfall...</div>
-          <div v-else-if="scryfallSearchResults.length === 0" class="no-matches">
-            No printings found on Scryfall.
-          </div>
-
-          <div v-else class="search-results">
-            <div
+        <!-- All printings (Scryfall) -->
+        <template v-else>
+          <div v-if="isSearchingScryfall" class="py-8 text-center text-ink-soft">Searching Scryfall…</div>
+          <p v-else-if="scryfallSearchResults.length === 0" class="py-8 text-center text-ink-soft">No printings found on Scryfall.</p>
+          <div v-else class="flex flex-col gap-2">
+            <button
               v-for="card in scryfallSearchResults"
               :key="card.id"
-              class="search-result-item"
-              :class="{ 'is-owned': findExactMatch(card.id) !== null }"
+              class="flex w-full items-center gap-3 rounded-lg border border-line bg-surface p-2.5 text-left outline-none transition-colors hover:border-brand hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
               @click="linkToScryfallCard(searchingCard!.id, card.id)"
             >
-              <img
-                v-if="card.image_uris?.small || card.card_faces?.[0]?.image_uris?.small"
-                :src="card.image_uris?.small || card.card_faces?.[0]?.image_uris?.small"
-                :alt="card.name"
-                class="search-result-image"
-              />
-              <div class="search-result-info">
-                <div class="search-result-name">{{ card.name }}</div>
-                <div class="search-result-set-name">{{ card.set_name }}</div>
-                <div class="search-result-set-code">{{ card.set.toUpperCase() }} {{ card.collector_number.padStart(4, '0') }}</div>
-                <div class="search-result-status" :class="findExactMatch(card.id) !== null ? 'owned' : 'missing'">
-                  {{ findExactMatch(card.id) !== null ? 'In Collection' : 'Not in Collection' }}
-                </div>
+              <img v-if="card.image_uris?.small || card.card_faces?.[0]?.image_uris?.small" :src="card.image_uris?.small || card.card_faces?.[0]?.image_uris?.small" :alt="card.name" class="h-14 w-10 shrink-0 rounded object-cover" />
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-semibold">{{ card.name }}</div>
+                <div class="truncate text-xs text-ink-faint">{{ card.set_name }}</div>
+                <div class="text-[11px] text-ink-faint tabular-nums">{{ card.set.toUpperCase() }} {{ card.collector_number.padStart(4, '0') }}</div>
               </div>
-            </div>
+              <span class="shrink-0 text-xs font-semibold" :style="findExactMatch(card.id) !== null ? 'color:var(--owned)' : 'color:var(--missing)'">{{ findExactMatch(card.id) !== null ? 'In collection' : 'Not in collection' }}</span>
+            </button>
           </div>
         </template>
-
-        <div class="modal-actions">
-          <button
-            v-if="searchingCard?.linkedCardKey || searchingCard?.linkedScryfallId"
-            @click="unlinkCard(searchingCard!.id); showSearchModal = false"
-            class="btn btn-danger"
-          >
-            Unlink Card
-          </button>
-          <button @click="showSearchModal = false" class="btn btn-secondary">Cancel</button>
-        </div>
       </div>
-    </div>
+
+      <template #footer>
+        <Button
+          v-if="searchingCard.linkedCardKey || searchingCard.linkedScryfallId"
+          variant="ghost"
+          class="mr-auto text-skipped"
+          @click="unlinkCard(searchingCard!.id); showSearchModal = false"
+        >
+          Unlink card
+        </Button>
+        <Button variant="ghost" @click="showSearchModal = false">Close</Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -792,458 +731,10 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
   background: var(--bg);
 }
 
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 2rem;
-  background: #fff;
-  border-bottom: 1px solid #ddd;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.header h1 {
-  margin: 0;
-  font-size: 1.5rem;
-  color: #333;
-}
-
 .main-content {
   flex: 1;
   overflow-y: auto;
   padding: 2rem;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 4rem 2rem;
-  color: #666;
-}
-
-.deck-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.deck-card {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.5rem;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.deck-card:hover {
-  border-color: #4a90d9;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.deck-info {
-  flex: 1;
-}
-
-.deck-info h3 {
-  margin: 0 0 0.25rem 0;
-  font-size: 1.125rem;
-  color: #333;
-}
-
-.deck-meta {
-  margin: 0;
-  font-size: 0.875rem;
-  color: #666;
-}
-
-.deck-stats {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
-}
-
-.completion-bar {
-  width: 120px;
-  height: 8px;
-  background: #e0e0e0;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.completion-fill {
-  height: 100%;
-  background: #4a90d9;
-  transition: width 0.3s ease;
-}
-
-.completion-text {
-  font-size: 0.75rem;
-  color: #666;
-}
-
-.btn-delete {
-  padding: 0.5rem;
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  color: #999;
-  cursor: pointer;
-  line-height: 1;
-}
-
-.btn-delete:hover {
-  color: #dc3545;
-}
-
-/* Deck Detail */
-.deck-detail-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.deck-detail-header h2 {
-  flex: 1;
-  margin: 0;
-  font-size: 1.5rem;
-  color: #333;
-}
-
-.deck-completion {
-  font-size: 1rem;
-  color: #4a90d9;
-  font-weight: 500;
-}
-
-.loading {
-  text-align: center;
-  padding: 2rem;
-  color: #666;
-}
-
-.card-category {
-  margin-bottom: 2rem;
-}
-
-.category-title {
-  margin: 0 0 1rem 0;
-  font-size: 1.125rem;
-  color: #333;
-  border-bottom: 2px solid #ddd;
-  padding-bottom: 0.5rem;
-}
-
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 1rem;
-}
-
-.deck-card-item {
-  position: relative;
-  border-radius: 8px;
-  overflow: hidden;
-  transition: transform 0.2s;
-  cursor: pointer;
-}
-
-.deck-card-item:hover {
-  transform: translateY(-2px);
-}
-
-.deck-card-item .card-image {
-  width: 100%;
-  display: block;
-}
-
-.deck-card-item.card-missing .card-image {
-  filter: grayscale(100%);
-  opacity: 0.5;
-}
-
-.card-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 0.5rem;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-quantity {
-  font-size: 0.875rem;
-  font-weight: bold;
-  color: #fff;
-}
-
-.card-status {
-  font-size: 0.75rem;
-  color: #fff;
-  padding: 0.125rem 0.5rem;
-  border-radius: 4px;
-}
-
-.deck-card-item:not(.card-missing) .card-status {
-  background: #28a745;
-}
-
-.deck-card-item.card-missing .card-status {
-  background: #dc3545;
-}
-
-/* Modal */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: #fff;
-  padding: 2rem;
-  border-radius: 8px;
-  width: 100%;
-  max-width: 500px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-}
-
-.modal h2 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.25rem;
-  color: #333;
-}
-
-.modal-description {
-  margin: 0 0 1rem 0;
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.import-input {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-  margin-bottom: 1rem;
-}
-
-.import-input:focus {
-  outline: none;
-  border-color: #4a90d9;
-}
-
-.error-message {
-  color: #dc3545;
-  font-size: 0.875rem;
-  margin: 0 0 1rem 0;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-/* Buttons */
-.btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-primary {
-  background: #4a90d9;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #3a7bc8;
-}
-
-.btn-primary:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #6c757d;
-  color: white;
-}
-
-.btn-secondary:hover {
-  background: #5a6268;
-}
-
-.btn-danger {
-  background: #dc3545;
-  color: white;
-}
-
-.btn-danger:hover {
-  background: #c82333;
-}
-
-/* Search modal */
-.modal-wide {
-  max-width: 600px;
-}
-
-.no-matches {
-  padding: 2rem;
-  text-align: center;
-  color: #666;
-}
-
-.search-results {
-  max-height: 400px;
-  overflow-y: auto;
-  margin-bottom: 1rem;
-}
-
-.search-result-item {
-  display: flex;
-  gap: 1rem;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  margin-bottom: 0.5rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.search-result-item:hover {
-  border-color: #4a90d9;
-  background: #f5f9ff;
-}
-
-.search-result-item.is-owned {
-  border-color: #28a745;
-  background: #f0fff4;
-}
-
-.search-result-image {
-  width: 60px;
-  height: auto;
-  border-radius: 4px;
-}
-
-.search-result-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.15rem;
-}
-
-.search-result-set-name {
-  font-size: 0.7rem;
-  color: #555;
-  text-transform: uppercase;
-}
-
-.search-result-set-code {
-  font-size: 0.75rem;
-  color: #888;
-}
-
-.search-result-status {
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.search-result-status.owned {
-  color: #28a745;
-}
-
-.search-result-status.missing {
-  color: #dc3545;
-}
-
-.search-result-name {
-  font-weight: 600;
-  color: #333;
-  font-size: 0.9rem;
-}
-
-/* Search mode toggle */
-.search-mode-toggle {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.mode-btn {
-  flex: 1;
-  padding: 0.5rem 1rem;
-  border: 1px solid #ddd;
-  background: #f5f5f5;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.mode-btn:hover {
-  background: #e5e5e5;
-}
-
-.mode-btn.active {
-  background: #4a90d9;
-  color: white;
-  border-color: #4a90d9;
-}
-
-/* Replace search input */
-.replace-search {
-  margin-bottom: 1rem;
-}
-
-.search-input {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #4a90d9;
-}
-
-.search-hint {
-  margin: 0.5rem 0 0 0;
-  font-size: 0.75rem;
-  color: #888;
-}
-
-.results-truncated {
-  padding: 0.75rem;
-  text-align: center;
-  font-size: 0.75rem;
-  color: #888;
-  background: #f5f5f5;
-  border-radius: 4px;
-}
 </style>
