@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SegmentedControl } from '@/components/ui/segmented'
+import { Dialog } from '@/components/ui/dialog'
 import ManaChip from '@/components/common/ManaChip.vue'
 import OwnershipBadge from '@/components/common/OwnershipBadge.vue'
 import StatCard from '@/components/common/StatCard.vue'
@@ -24,6 +25,7 @@ const inks = ['ink', 'ink-soft', 'ink-faint'] as const
 const manaKeys = ['W', 'U', 'B', 'R', 'G', 'C'] as const
 
 const searchDemo = ref('')
+const dialogOpen = ref(false)
 const mode = ref<'quick' | 'advanced'>('quick')
 const selectedMana = ref<string[]>(['W', 'R'])
 function toggleMana(c: string) {
@@ -169,6 +171,21 @@ const sampleCards = [
               <Skeleton class="h-3 w-1/3" />
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- dialog -->
+      <section class="flex flex-col gap-4">
+        <h2 class="font-display text-xl font-bold">Dialog</h2>
+        <div>
+          <Button variant="secondary" @click="dialogOpen = true">Open dialog</Button>
+          <Dialog v-model:open="dialogOpen" title="Import deck from Archidekt" description="Paste an Archidekt deck URL or deck ID.">
+            <Input placeholder="https://archidekt.com/decks/123456/my-deck" />
+            <template #footer>
+              <Button variant="ghost" @click="dialogOpen = false">Cancel</Button>
+              <Button @click="dialogOpen = false">Import</Button>
+            </template>
+          </Dialog>
         </div>
       </section>
 

@@ -5,6 +5,10 @@ import { useDecksStore, useSegmentsStore, useCollectionStore } from '@/stores'
 import { getCachedCards, searchCards } from '@/api/scryfall'
 import { fetchArchidektDeck, extractDeckId, convertArchidektCards } from '@/api/archidekt'
 import type { Deck, ScryfallCard } from '@/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Dialog } from '@/components/ui/dialog'
+import { Layers, Download, Trash2 } from 'lucide-vue-next'
 
 interface CollectionMatch {
   card: ScryfallCard
@@ -490,44 +494,55 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
 
 <template>
   <div class="decks-view">
-    <header class="header">
-      <h1>My Decks</h1>
-      <button v-if="!selectedDeck" @click="showImportModal = true" class="btn btn-primary">
-        Import from Archidekt
-      </button>
+    <header class="flex shrink-0 items-center justify-between gap-4 border-b border-line bg-surface px-6 py-4">
+      <h1 class="font-display text-xl font-bold tracking-tight">My Decks</h1>
+      <Button v-if="!selectedDeck" @click="showImportModal = true">
+        <Download :size="18" /> Import from Archidekt
+      </Button>
     </header>
 
     <!-- Deck List View -->
     <main v-if="!selectedDeck" class="main-content">
-      <div v-if="decksStore.decks.length === 0" class="empty-state">
-        <p>No decks yet. Import a deck from Archidekt to get started!</p>
+      <div v-if="decksStore.decks.length === 0" class="mx-auto max-w-md py-20 text-center">
+        <div class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-(--accent-soft) text-brand">
+          <Layers :size="26" />
+        </div>
+        <h2 class="font-display text-2xl font-bold tracking-tight">No decks yet</h2>
+        <p class="mt-2 text-ink-soft">Import a deck from Archidekt and link it against your collection.</p>
+        <Button class="mt-6" size="lg" @click="showImportModal = true">
+          <Download :size="18" /> Import a deck
+        </Button>
       </div>
 
-      <div v-else class="deck-list">
+      <div v-else class="mx-auto flex max-w-3xl flex-col gap-3">
         <div
           v-for="deck in decksStore.decks"
           :key="deck.id"
-          class="deck-card"
+          class="group flex cursor-pointer items-center gap-4 rounded-xl border border-line bg-surface p-4 shadow-(--shadow-1) transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-(--shadow-2)"
+          role="button"
+          tabindex="0"
           @click="selectDeck(deck)"
+          @keydown.enter="selectDeck(deck)"
         >
-          <div class="deck-info">
-            <h3>{{ deck.name }}</h3>
-            <p class="deck-meta">{{ deck.cards.length }} unique cards</p>
+          <div class="min-w-0 flex-1">
+            <h3 class="truncate font-semibold">{{ deck.name }}</h3>
+            <p class="text-sm text-ink-faint tabular-nums">{{ deck.cards.length }} unique cards</p>
           </div>
-          <div class="deck-stats">
-            <div class="completion-bar">
-              <div
-                class="completion-fill"
-                :style="{ width: getDeckCompletion(deck).percentage + '%' }"
-              ></div>
+          <div class="flex w-40 shrink-0 flex-col gap-1">
+            <div class="h-2 overflow-hidden rounded-full bg-surface-2">
+              <div class="h-full rounded-full bg-(--accent-grad)" :style="{ width: getDeckCompletion(deck).percentage + '%' }"></div>
             </div>
-            <span class="completion-text">
-              {{ getDeckCompletion(deck).owned }}/{{ getDeckCompletion(deck).total }}
-              ({{ getDeckCompletion(deck).percentage }}%)
+            <span class="text-xs text-ink-soft tabular-nums">
+              {{ getDeckCompletion(deck).owned }}/{{ getDeckCompletion(deck).total }} ({{ getDeckCompletion(deck).percentage }}%)
             </span>
           </div>
-          <button @click.stop="deleteDeck(deck)" class="btn-delete" title="Delete deck">
-            &times;
+          <button
+            class="grid h-9 w-9 shrink-0 place-items-center rounded-md text-ink-faint outline-none transition-colors hover:bg-(--skipped-soft) hover:text-skipped focus-visible:ring-2 focus-visible:ring-ring"
+            title="Delete deck"
+            aria-label="Delete deck"
+            @click.stop="deleteDeck(deck)"
+          >
+            <Trash2 :size="16" />
           </button>
         </div>
       </div>
@@ -577,28 +592,26 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
     </main>
 
     <!-- Import Modal -->
-    <div v-if="showImportModal" class="modal-overlay">
-      <div class="modal">
-        <h2>Import Deck from Archidekt</h2>
-        <p class="modal-description">
-          Paste an Archidekt deck URL or deck ID
-        </p>
-        <input
-          v-model="importUrl"
-          type="text"
-          placeholder="https://archidekt.com/decks/123456/my-deck"
-          class="import-input"
-          @keyup.enter="importDeck"
-        />
-        <p v-if="importError" class="error-message">{{ importError }}</p>
-        <div class="modal-actions">
-          <button @click="showImportModal = false" class="btn btn-secondary">Cancel</button>
-          <button @click="importDeck" class="btn btn-primary" :disabled="isImporting">
-            {{ isImporting ? 'Importing...' : 'Import' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Dialog
+      v-model:open="showImportModal"
+      title="Import deck from Archidekt"
+      description="Paste an Archidekt deck URL or deck ID."
+    >
+      <label for="import-url" class="sr-only">Archidekt deck URL or ID</label>
+      <Input
+        id="import-url"
+        v-model="importUrl"
+        placeholder="https://archidekt.com/decks/123456/my-deck"
+        @keyup.enter="importDeck"
+      />
+      <p v-if="importError" role="alert" class="mt-2 text-sm text-skipped">{{ importError }}</p>
+      <template #footer>
+        <Button variant="ghost" @click="showImportModal = false">Cancel</Button>
+        <Button :disabled="isImporting" @click="importDeck">
+          {{ isImporting ? 'Importing…' : 'Import' }}
+        </Button>
+      </template>
+    </Dialog>
 
     <!-- Card Search Modal -->
     <div v-if="showSearchModal" class="modal-overlay" @click.self="showSearchModal = false">
@@ -776,7 +789,7 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #f5f5f5;
+  background: var(--bg);
 }
 
 .header {

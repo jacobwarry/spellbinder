@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 @import "./styles/tokens.css";
 
 /* Dark mode = `.dark` class on <html> (set by composables/useTheme.ts) */
