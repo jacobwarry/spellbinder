@@ -5,7 +5,7 @@ import { useSegmentsStore, useCollectionStore, useBindersStore, usePlansStore } 
 import { getCachedCards } from '@/api/scryfall'
 import type { ScryfallCard } from '@/types'
 import { debugCollectionData, cleanupInvalidKeys, findDuplicateCardsInSegments, findOwnershipInconsistencies, fixOwnershipInconsistencies, cleanupOrphanedSegments } from '@/utils/debugCollection'
-import { calculatePlacements, type PlacementResult } from '@/composables/usePlacement'
+import { useAllPlacements, buildCardLocationMap } from '@/composables/useAllPlacements'
 import MultiSelectDropdown from '@/components/MultiSelectDropdown.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,7 +27,6 @@ const bindersStore = useBindersStore()
 const plansStore = usePlansStore()
 
 const searchMode = ref<'quick' | 'advanced'>('quick')
-const placementResult = ref<PlacementResult | null>(null)
 const searchQuery = ref('')
 const debouncedSearchQuery = ref('')
 const allCards = ref<Map<string, { card: ScryfallCard; segmentId: string; segmentName: string; cardIndex: number }>>(new Map())
@@ -479,67 +478,14 @@ function locationLabel(segmentId: string, cardIndex: number): string | undefined
   return loc ? `${loc.binderName} · P${loc.pageNumber} · S${loc.slotOnPage}` : undefined
 }
 
-// Calculate placements for ALL plans
-const allPlacements = ref<Map<string, PlacementResult>>(new Map())
+// Placements across all plans (shared composable) + an O(1) card-location lookup.
+const { allPlacements } = useAllPlacements()
 
-async function recalculateAllPlacements() {
-  const newPlacements = new Map<string, PlacementResult>()
+const locationMap = computed(() =>
+  buildCardLocationMap(allPlacements.value.values(), (id) => bindersStore.getBinder(id)?.name)
+)
 
-  for (const plan of plansStore.plans) {
-    const segments = segmentsStore.getSegmentsInOrder(plan.segmentIds)
-    const binders = bindersStore.getBindersInOrder(plan.binderIds)
-
-    if (segments.length > 0 && binders.length > 0) {
-      const result = await calculatePlacements(segments, binders)
-      newPlacements.set(plan.id, result)
-    }
-  }
-
-  allPlacements.value = newPlacements
-
-  // Keep placementResult for the first plan for backwards compatibility
-  const firstPlan = plansStore.plans[0]
-  if (firstPlan) {
-    placementResult.value = newPlacements.get(firstPlan.id) ?? null
-  } else {
-    placementResult.value = null
-  }
-}
-
-// Watch for changes in plans, binders, or segments and recalculate
-watch(() => [plansStore.plans, bindersStore.binders, segmentsStore.segments], () => {
-  recalculateAllPlacements()
-}, { deep: true })
-
-onMounted(() => {
-  recalculateAllPlacements()
-})
-
-// Precomputed location lookup map for O(1) access
-const locationMap = computed(() => {
-  const map = new Map<string, { binderName: string; pageNumber: number; slotOnPage: number }>()
-
-  for (const [, result] of allPlacements.value) {
-    for (const placement of result.placements) {
-      const key = `${placement.segmentId}:${placement.cardIndexInSegment}`
-      if (!map.has(key)) {
-        const binder = bindersStore.getBinder(placement.binderId)
-        if (binder) {
-          map.set(key, {
-            binderName: binder.name,
-            pageNumber: placement.pageNumber,
-            slotOnPage: placement.slotOnPage
-          })
-        }
-      }
-    }
-  }
-
-  return map
-})
-
-// Helper function to get card location info - O(1) lookup
-function getCardLocation(segmentId: string, cardIndex: number): { binderName: string; pageNumber: number; slotOnPage: number } | null {
+function getCardLocation(segmentId: string, cardIndex: number) {
   return locationMap.value.get(`${segmentId}:${cardIndex}`) ?? null
 }
 
@@ -574,10 +520,8 @@ onMounted(async () => {
   ;(window as any).cleanupOrphans = cleanupOrphanedSegments
   ;(window as any).clearCache = clearCardCache
   ;(window as any).checkPlacements = () => {
-    console.log('Placement Result:', placementResult.value)
-    console.log('Total placements:', placementResult.value?.placements.length ?? 0)
+    console.log('All placements (by plan):', allPlacements.value)
     console.log('Plans:', plansStore.plans)
-    console.log('First plan:', plansStore.plans[0])
   }
 
   // Prevent concurrent fetches

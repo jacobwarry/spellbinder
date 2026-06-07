@@ -5,6 +5,7 @@ import type { ScryfallSet, ScryfallCard, BinderPlan, Binder, Segment } from '@/t
 import { getPlacementOwnershipKey } from '@/types/placement'
 import { useBindersStore, useSegmentsStore, usePlansStore, useCollectionStore } from '@/stores'
 import { calculatePlacements, type PlacementResult } from '@/composables/usePlacement'
+import { useAllPlacements, buildBinderStats } from '@/composables/useAllPlacements'
 import BinderCard from '@/components/binder/BinderCard.vue'
 import BinderForm from '@/components/binder/BinderForm.vue'
 import BinderPageGrid from '@/components/binder/BinderPageGrid.vue'
@@ -92,42 +93,11 @@ const planOwnedPercentage = computed(() => {
 })
 
 // Calculate cards per binder for all plans (for overview section)
-const allPlansBinderStats = ref(new Map<string, { planned: number; owned: number }>())
+const { allPlacements } = useAllPlacements()
 
-async function updateAllPlansBinderStats() {
-  const stats = new Map<string, { planned: number; owned: number }>()
-
-  for (const plan of plansStore.plans) {
-    const segments = segmentsStore.getSegmentsInOrder(plan.segmentIds)
-    const binders = bindersStore.getBindersInOrder(plan.binderIds)
-
-    if (segments.length === 0 || binders.length === 0) continue
-
-    const result = await calculatePlacements(segments, binders)
-    if (!result) continue
-
-    // Count planned and owned cards per binder
-    for (const placement of result.placements) {
-      const current = stats.get(placement.binderId) ?? { planned: 0, owned: 0 }
-      current.planned++
-
-      const key = getPlacementOwnershipKey(placement)
-      if (collectionStore.isOwned(key)) {
-        current.owned++
-      }
-
-      stats.set(placement.binderId, current)
-    }
-  }
-
-  allPlansBinderStats.value = stats
-}
-
-// Update stats when plans, segments, or collection changes
-watch(
-  () => [plansStore.plans, segmentsStore.segments, collectionStore.ownedCardIds] as const,
-  () => updateAllPlansBinderStats(),
-  { immediate: true }
+// Per-binder planned/owned stats for the overview, derived from all-plan placements.
+const allPlansBinderStats = computed(() =>
+  buildBinderStats(allPlacements.value.values(), (key) => collectionStore.isOwned(key))
 )
 
 const planBinders = computed(() =>
