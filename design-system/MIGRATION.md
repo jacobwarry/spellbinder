@@ -89,8 +89,13 @@ Rule: **test logic and data integrity, not the DOM.** Mostly Vitest unit tests o
 - **Win:** shell themed in both modes; nav + keyboard + active state correct; bottom nav on phone.
 
 ### Phase 2 — Primitive + presentational component library
-- **Do:** add shadcn-vue Button, Input, Tabs/Segmented, Badge, Dialog, Sheet, DropdownMenu, Tooltip, Skeleton (+ toast if confirmed). Build app atoms: `ManaChip`, `OwnershipBadge`, `StatCard`, `CardTile`, `ColorIdentityBar`. Expand `/styleguide` to render them all in both themes.
+- **Do:** add primitives + build app atoms: `ManaChip`, `OwnershipBadge`, `StatCard`, `CardTile`, `ColorIdentityBar`. Expand `/styleguide` to render them all in both themes.
 - **Win:** every primitive auditable in isolation on `/styleguide` — the de-risking gallery later phases compose from. No production screen changed yet.
+- **Done (notes):**
+  - The shadcn-vue CLI rejected our `components.json` / tsconfig path resolution (version drift), so primitives are **hand-authored** as thin reka-ui/token wrappers (same pattern as `Button`). `components.json` kept (minus the invalid `tsConfigPath` key) for future use.
+  - **Built:** Button (P0), Input, Badge, Skeleton, SegmentedControl + the five atoms. Shared types in `src/components/common/types.ts` (type exports can't live in `<script setup>`).
+  - **Deferred to first use:** Dialog + Sheet → P6/P9; Tabs / Tooltip / Toast → when a consumer needs them. Building complex reka-ui wrappers with no consumer now just risks drift.
+  - Tailwind v4 canonical class form used (`shadow-(--shadow-1)`, `aspect-63/88`), not the `[var(...)]` arbitrary form.
 
 ### Phase 3 — Home: main page / first-run state
 - **Do:** migrate `HomePage` **empty state** (no sets): welcome, SVG-reframed storage notice, single CTA. Search branch left on legacy styling for now.
