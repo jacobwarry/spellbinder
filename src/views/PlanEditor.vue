@@ -12,7 +12,7 @@ import BinderCard from '@/components/binder/BinderCard.vue'
 import BinderForm from '@/components/binder/BinderForm.vue'
 import BinderSpread from '@/components/binder/BinderSpread.vue'
 import CardActionSheet from '@/components/binder/CardActionSheet.vue'
-import BoxCardList from '@/components/binder/BoxCardList.vue'
+import BoxView from '@/components/binder/BoxView.vue'
 import SegmentCard from '@/components/segments/SegmentCard.vue'
 import SetSelector from '@/components/sets/SetSelector.vue'
 import CardPicker from '@/components/sets/CardPicker.vue'
@@ -161,6 +161,16 @@ const binderLayout = computed<BinderLayout | null>(() => {
 })
 const viewingBinderPages = computed(() => binderLayout.value?.pages ?? [])
 
+// Storage boxes are linear: render their placements in order, no page grid.
+const boxItems = computed(() => {
+  if (!viewingBinder.value || viewingBinder.value.type !== 'box') return []
+  return currentBinderPlacements.value.map(p => ({ slot: placementToSlot(p), placement: p }))
+})
+function onBoxSlotSelect(p: CardPlacement) {
+  sheetRef.value = { segmentId: p.segmentId, cardIndex: p.cardIndexInSegment }
+  sheetOpen.value = true
+}
+
 // ---- Card action sheet (keyed by segment+index so it survives recalcs) ----
 const sheetOpen = ref(false)
 const sheetRef = ref<{ segmentId: string; cardIndex: number } | null>(null)
@@ -177,7 +187,9 @@ const sheetCard = computed(() => {
   return {
     ...placementToSlot(p),
     spacerCount: segmentsStore.getSpacerCount(p.segmentId, p.cardIndexInSegment),
-    location: `Page ${p.pageNumber} · Slot ${p.slotOnPage}`
+    location: viewingBinder.value?.type === 'box'
+      ? `Box · #${p.slotOnPage}`
+      : `Page ${p.pageNumber} · Slot ${p.slotOnPage}`
   }
 })
 
@@ -987,12 +999,12 @@ onUnmounted(() => {
             />
           </div>
 
-          <!-- Box list view (legacy; replaced in P11) -->
-          <div v-else class="min-h-0 flex-1 overflow-y-auto rounded-lg border border-line bg-surface p-4">
-            <div v-if="currentBinderPlacements.length === 0" class="text-sm text-ink-soft">
+          <!-- Storage box: virtualized linear slot grid -->
+          <div v-else class="min-h-0 flex-1 overflow-hidden rounded-lg border border-line bg-surface">
+            <div v-if="boxItems.length === 0" class="p-4 text-sm text-ink-soft">
               This box is empty. Use "Add cards" above to add cards from a set.
             </div>
-            <BoxCardList v-else :placements="currentBinderPlacements" :zoom="100" />
+            <BoxView v-else :items="boxItems" @select="onBoxSlotSelect" />
           </div>
         </div>
       </template>
