@@ -171,6 +171,32 @@ function onBoxSlotSelect(p: CardPlacement) {
   sheetOpen.value = true
 }
 
+// Double-click shortcut: toggle owned without opening the sheet.
+function onBinderQuickOwn(page: number, slot0: number) {
+  const p = binderLayout.value?.meta.get(`${page}:${slot0}`)
+  if (p) collectionStore.toggleOwned(getPlacementOwnershipKey(p))
+}
+function onBoxQuickOwn(p: CardPlacement) {
+  collectionStore.toggleOwned(getPlacementOwnershipKey(p))
+}
+
+// Turning past the first/last page hops to the previous/next binder in the plan.
+function onBinderEdge(direction: -1 | 1) {
+  const idx = planBinders.value.findIndex(b => b.id === selectedBinderForView.value)
+  if (idx === -1) return
+  if (direction < 0 && idx > 0) {
+    const prev = planBinders.value[idx - 1]
+    if (!prev) return
+    selectedBinderForView.value = prev.id
+    selectedPage.value = prev.type === 'binder' ? prev.pageCount : 1 // land on its last page
+  } else if (direction > 0 && idx < planBinders.value.length - 1) {
+    const next = planBinders.value[idx + 1]
+    if (!next) return
+    selectedBinderForView.value = next.id
+    selectedPage.value = 1
+  }
+}
+
 // ---- Card action sheet (keyed by segment+index so it survives recalcs) ----
 const sheetOpen = ref(false)
 const sheetRef = ref<{ segmentId: string; cardIndex: number } | null>(null)
@@ -996,6 +1022,8 @@ onUnmounted(() => {
               :paused="anyModalOpen"
               @select="onBinderSlotSelect"
               @insert="onBinderSlotInsert"
+              @quick-own="onBinderQuickOwn"
+              @edge="onBinderEdge"
             />
           </div>
 
@@ -1004,7 +1032,7 @@ onUnmounted(() => {
             <div v-if="boxItems.length === 0" class="p-4 text-sm text-ink-soft">
               This box is empty. Use "Add cards" above to add cards from a set.
             </div>
-            <BoxView v-else :items="boxItems" @select="onBoxSlotSelect" />
+            <BoxView v-else :items="boxItems" @select="onBoxSlotSelect" @toggle-owned="onBoxQuickOwn" />
           </div>
         </div>
       </template>

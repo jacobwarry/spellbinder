@@ -35,7 +35,10 @@ const props = withDefaults(
 const emit = defineEmits<{
   select: [pageNumber: number, slotIndex: number]
   insert: [pageNumber: number, slotIndex: number]
+  quickOwn: [pageNumber: number, slotIndex: number]
   pageChange: [page: number]
+  /** Turned past the first (-1) or last (+1) view — host may switch binders. */
+  edge: [direction: -1 | 1]
 }>()
 
 const { GAP, PAD, GUTTER } = SPREAD_GEOMETRY
@@ -108,7 +111,9 @@ function slotsForPage(page: number): (BinderSlotCard | null)[] {
 // ---- navigation ----
 function turn(dir: 1 | -1) {
   if (props.paused) return
-  go(dir)
+  // If we can't move within this binder, we're at an edge — let the host
+  // hop to the previous/next binder in the series.
+  if (!go(dir)) emit('edge', dir)
 }
 
 function onKey(e: KeyboardEvent) {
@@ -247,6 +252,7 @@ function jumpTo(page: number) {
                 :card="card ?? undefined"
                 @select="emit('select', part.page, idx)"
                 @insert="emit('insert', part.page, idx)"
+                @toggle-owned="emit('quickOwn', part.page, idx)"
               />
             </div>
           </div>

@@ -19,7 +19,10 @@ interface BoxItem {
 }
 
 const props = defineProps<{ items: BoxItem[] }>()
-const emit = defineEmits<{ select: [placement: CardPlacement] }>()
+const emit = defineEmits<{
+  select: [placement: CardPlacement]
+  toggleOwned: [placement: CardPlacement]
+}>()
 
 const TILE_MIN = 150
 const GAP = 12
@@ -79,6 +82,7 @@ function measureRow(el: unknown) {
             :slot-number="vRow.index * columnCount + i + 1"
             :card="item.slot"
             @select="emit('select', item.placement)"
+            @toggle-owned="emit('toggleOwned', item.placement)"
           />
         </div>
       </div>

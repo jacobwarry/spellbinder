@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount } from 'vue'
 import { Check, X, Plus } from 'lucide-vue-next'
 import type { Mana, BinderSlotCard } from '@/components/common/types'
 
@@ -7,10 +8,31 @@ defineProps<{
   card?: BinderSlotCard
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   select: []
   insert: []
+  toggleOwned: []
 }>()
+
+// Single click opens the action sheet; double click is a shortcut to toggle
+// owned. Debounce the single click so the sheet doesn't flash on a double click.
+const DOUBLE_CLICK_MS = 220
+let clickTimer: ReturnType<typeof setTimeout> | null = null
+function onCardClick() {
+  if (clickTimer !== null) {
+    clearTimeout(clickTimer)
+    clickTimer = null
+    emit('toggleOwned')
+    return
+  }
+  clickTimer = setTimeout(() => {
+    clickTimer = null
+    emit('select')
+  }, DOUBLE_CLICK_MS)
+}
+onBeforeUnmount(() => {
+  if (clickTimer !== null) clearTimeout(clickTimer)
+})
 
 const ART: Record<Mana, string> = {
   R: 'radial-gradient(circle at 50% 28%,#ff6a52,#a32417)',
@@ -27,8 +49,8 @@ const MULTI_ART = 'radial-gradient(circle at 50% 28%,#ecce7e,#9c7b25)'
   <button
     v-if="card"
     class="group block cursor-pointer rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    :aria-label="`${card.name}, ${card.set} ${card.number}, ${card.status}. Slot ${slotNumber}. Open actions.`"
-    @click="$emit('select')"
+    :aria-label="`${card.name}, ${card.set} ${card.number}, ${card.status}. Slot ${slotNumber}. Click for actions, double-click to toggle owned.`"
+    @click="onCardClick"
   >
     <!-- The card = image + an attached label band, one rounded unit. -->
     <div class="overflow-hidden rounded-[4px] transition-transform group-active:scale-[.97]">
