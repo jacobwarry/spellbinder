@@ -1146,7 +1146,7 @@ onUnmounted(() => {
               </div>
 
               <div v-if="plan.binderIds.length > 0" class="set-binders">
-                <h4>Binders</h4>
+                <h4>Storage</h4>
                 <div class="binder-list-compact">
                   <BinderCard
                     v-for="binder in bindersStore.getBindersInOrder(plan.binderIds)"
