@@ -727,13 +727,9 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
 .decks-view {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  background: var(--bg);
 }
 
 .main-content {
-  flex: 1;
-  overflow-y: auto;
   padding: 2rem;
 }
 

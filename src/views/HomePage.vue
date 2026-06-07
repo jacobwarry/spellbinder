@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSegmentsStore, useCollectionStore, useBindersStore, usePlansStore } from '@/stores'
 import { getCachedCards } from '@/api/scryfall'
@@ -13,7 +13,7 @@ import ManaChip from '@/components/common/ManaChip.vue'
 import CardTile from '@/components/common/CardTile.vue'
 import type { Mana } from '@/components/common/types'
 import { useElementSize } from '@vueuse/core'
-import { useVirtualizer } from '@tanstack/vue-virtual'
+import { useWindowVirtualizer } from '@tanstack/vue-virtual'
 import { Database, TriangleAlert, Sparkles, ArrowRight, Search } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -421,13 +421,22 @@ const filteredCards = computed(() => {
   }
 })
 
-// Results: responsive column count from the measured scroll container, then
-// row-virtualize the card grid (no pagination — the whole result set is windowed).
-const scrollEl = ref<HTMLElement | null>(null)
-const { width: gridWidth } = useElementSize(scrollEl)
+// Results: responsive column count from the measured list width, then
+// row-virtualize the card grid against the document scroll (window virtualizer,
+// since the page scrolls naturally). No pagination — the full set is windowed.
+const listRef = ref<HTMLElement | null>(null)
+const { width: gridWidth } = useElementSize(listRef)
 
 const TILE_MIN = 180
 const GRID_GAP = 16
+
+// Distance from the top of the document to the start of the list (scrollMargin).
+const listOffset = ref(0)
+function updateListOffset() {
+  listOffset.value = listRef.value
+    ? listRef.value.getBoundingClientRect().top + window.scrollY
+    : 0
+}
 
 const columnCount = computed(() => {
   const w = gridWidth.value
@@ -450,14 +459,21 @@ const estimatedRowHeight = computed(() => {
   return colWidth * (88 / 63) + 96 + GRID_GAP // image + body + row gap
 })
 
-const rowVirtualizer = useVirtualizer(
+const rowVirtualizer = useWindowVirtualizer(
   computed(() => ({
     count: resultRows.value.length,
-    getScrollElement: () => scrollEl.value,
     estimateSize: () => estimatedRowHeight.value,
     overscan: 5,
-    gap: GRID_GAP
+    gap: GRID_GAP,
+    scrollMargin: listOffset.value
   }))
+)
+
+// Keep scrollMargin accurate as the controls above the list change height.
+onMounted(updateListOffset)
+watch(
+  [gridWidth, () => searchMode.value, () => advancedSearchTriggered.value, () => filteredCards.value.length],
+  () => nextTick(updateListOffset)
 )
 
 function measureRow(el: unknown) {
@@ -583,7 +599,7 @@ onMounted(async () => {
   <div class="home-page">
     <main class="main-content">
       <!-- First-run / empty state for new users -->
-      <div v-if="hasNoSets" class="h-full overflow-y-auto flex justify-center px-4 py-10 sm:py-16">
+      <div v-if="hasNoSets" class="flex justify-center px-4 py-10 sm:py-16">
         <div class="w-full max-w-2xl rounded-2xl border border-line bg-surface p-8 sm:p-10 shadow-(--shadow-1)">
           <div class="flex items-center gap-2 text-brand text-xs font-semibold uppercase tracking-[0.12em]">
             <Sparkles :size="15" /> Welcome
@@ -625,9 +641,8 @@ onMounted(async () => {
       </div>
 
       <!-- Search section (only shown when user has sets) -->
-      <div v-else class="mx-auto flex h-full w-full max-w-300 min-h-0 flex-col px-6 sm:px-8">
-        <!-- Header (non-scrolling) -->
-        <div class="shrink-0 pt-6">
+      <div v-else class="mx-auto w-full max-w-300 px-6 sm:px-8">
+        <div class="pt-6">
           <h2 class="font-display text-xl font-bold tracking-tight">Search your collection</h2>
           <p v-if="isLoading" class="mt-4 italic text-ink-soft">Loading cards…</p>
           <template v-else>
@@ -746,8 +761,8 @@ onMounted(async () => {
           </template>
         </div>
 
-        <!-- Scrollable results region (virtualizer scroll element) -->
-        <div v-if="!isLoading" ref="scrollEl" class="min-h-0 flex-1 overflow-y-auto pb-8 pt-4">
+        <!-- Results (window-virtualized against the document scroll) -->
+        <div v-if="!isLoading" ref="listRef" class="pb-8 pt-4">
           <div v-if="searchMode === 'quick' && debouncedSearchQuery && filteredCards.length === 0" class="py-6 text-center text-ink-soft">
             No cards found matching "{{ debouncedSearchQuery }}"
           </div>
@@ -769,7 +784,7 @@ onMounted(async () => {
               :key="vRow.index"
               :data-index="vRow.index"
               :ref="measureRow"
-              :style="{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vRow.start}px)` }"
+              :style="{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vRow.start - listOffset}px)` }"
             >
               <div class="grid gap-4" :style="{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }">
                 <CardTile
@@ -794,19 +809,8 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.home-page {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background: var(--bg);
-}
-
-.main-content {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.search-section {
+  /* natural document flow; results window-virtualized */
 }
 
 </style>

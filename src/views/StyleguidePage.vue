@@ -48,7 +48,7 @@ const sampleCards = [
 </script>
 
 <template>
-  <div class="min-h-dvh overflow-y-auto bg-background text-foreground p-6 md:p-10">
+  <div class="bg-background text-foreground p-6 md:p-10">
     <div class="max-w-5xl mx-auto flex flex-col gap-12">
       <!-- header -->
       <header class="flex items-center justify-between">

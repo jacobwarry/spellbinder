@@ -17,10 +17,10 @@ const isActive = (m: (p: string) => boolean) => m(route.path)
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-background text-foreground">
-    <!-- Top bar -->
+  <div class="min-h-dvh bg-background text-foreground">
+    <!-- Top bar (sticky) -->
     <header
-      class="flex items-center justify-between h-16 px-4 sm:px-6 shrink-0 z-10 border-b border-line
+      class="sticky top-0 z-20 flex items-center justify-between h-16 px-4 sm:px-6 border-b border-line
              bg-[color-mix(in_srgb,var(--bg)_82%,transparent)] backdrop-blur-md"
     >
       <RouterLink to="/" class="flex items-center gap-3" aria-label="Spellbinder home">
@@ -72,14 +72,14 @@ const isActive = (m: (p: string) => boolean) => m(route.path)
       </div>
     </header>
 
-    <!-- Content -->
-    <main class="flex-1 min-h-0 overflow-hidden">
+    <!-- Content (document scroll). Bottom padding clears the fixed mobile nav. -->
+    <main class="pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
       <RouterView />
     </main>
 
-    <!-- Mobile bottom tab nav -->
+    <!-- Mobile bottom tab nav (fixed) -->
     <nav
-      class="sm:hidden flex items-stretch shrink-0 z-10 border-t border-line
+      class="sm:hidden fixed inset-x-0 bottom-0 z-20 flex items-stretch border-t border-line
              bg-[color-mix(in_srgb,var(--bg)_82%,transparent)] backdrop-blur-md"
       style="padding-bottom: env(safe-area-inset-bottom)"
       aria-label="Primary"

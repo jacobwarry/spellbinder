@@ -165,6 +165,12 @@ Named animations (canonical):
 
 **Breakpoints:** 375 / 640 / 768 / 1024 / 1440. Mobile-first.
 
+**Scroll model — document-scroll by default; the binder viewer is the exception.**
+- The app does **not** lock to `height:100%` with per-view internal scroll. The **document scrolls naturally**: the top bar is `sticky top-0`, the mobile bottom nav is `fixed bottom-0` (with a content `padding-bottom` inset to clear it), and views are natural-height. This avoids nested scroll regions and the starved-viewport problem (e.g. cramped search results).
+- **Exception:** the **binder viewer** route is fixed to the viewport (`h-dvh`, its own internal layout + pinned page-nav), because fit-to-viewport needs a fixed, measurable container. Note `BinderSpread` measures *its own container*, so it works whether embedded in a sized region (editor preview) or filling a full-screen route — only the standalone route opts into `h-dvh`.
+- **Long, virtualized lists** (collection results) use a **window virtualizer** (against the document scroll) with `scrollMargin` = the list's offset from the document top — not an inner scroll container.
+- Rule of thumb: **never `min-h-dvh`/`100vh` page-fill or per-view `overflow` hacks** outside the binder viewer; let the document scroll.
+
 **Responsive navigation:**
 - App shell uses a **top bar** (brand + section nav + theme) on all sizes; on phones the section nav collapses to a bottom nav or overflow as needed (≤5 items; icon **+** label).
 - The binder viewer has its **own** top bar + bottom nav (page-turn). See page override.

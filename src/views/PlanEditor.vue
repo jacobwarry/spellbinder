@@ -942,7 +942,7 @@ onUnmounted(() => {
 
 <template>
   <div class="plan-editor">
-    <aside class="flex w-95 shrink-0 flex-col gap-6 overflow-y-auto border-r border-line bg-surface p-4">
+    <aside class="sticky top-16 flex max-h-[calc(100dvh-4rem)] w-95 shrink-0 flex-col gap-6 overflow-y-auto border-r border-line bg-surface p-4">
       <section class="flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <h2 class="font-display text-lg font-bold tracking-tight">Sets</h2>
@@ -1361,7 +1361,7 @@ onUnmounted(() => {
 <style scoped>
 .plan-editor {
   display: flex;
-  height: 100%;
+  align-items: flex-start;
 }
 
 .sidebar {
@@ -1493,8 +1493,8 @@ onUnmounted(() => {
 
 .main-content {
   flex: 1;
+  min-width: 0;
   padding: 1rem;
-  overflow-y: auto;
 }
 
 .empty-state {
