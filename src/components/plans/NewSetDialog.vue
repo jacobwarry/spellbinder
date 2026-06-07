@@ -3,6 +3,10 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useBindersStore, useSegmentsStore } from '@/stores'
 import { fetchSets, fetchSetCards } from '@/api/scryfall'
 import type { ScryfallSet, ContainerType } from '@/types'
+import { Dialog } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { X } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   submit: [data: { name: string; binderId?: string; segmentId?: string }]
@@ -22,11 +26,16 @@ const shouldAddSegment = ref(false)
 const selectedSet = ref<ScryfallSet | null>(null)
 const isSubmitting = ref(false)
 
-// Set search state
 const allSets = ref<ScryfallSet[]>([])
 const setsLoading = ref(true)
 const setsError = ref<string | null>(null)
 const setSearchQuery = ref('')
+
+// Open on mount; closing (esc / scrim / Cancel) cancels.
+const open = ref(true)
+watch(open, (isOpen) => {
+  if (!isOpen) emit('cancel')
+})
 
 const isValid = computed(() => {
   if (!setName.value.trim()) return false
@@ -36,17 +45,12 @@ const isValid = computed(() => {
 
 const filteredSets = computed(() => {
   const query = setSearchQuery.value.toLowerCase().trim()
-  if (!query) {
-    return allSets.value
-  }
-  return allSets.value
-    .filter(s =>
-      s.name.toLowerCase().includes(query) ||
-      s.code.toLowerCase().includes(query)
-    )
+  if (!query) return allSets.value
+  return allSets.value.filter(s =>
+    s.name.toLowerCase().includes(query) || s.code.toLowerCase().includes(query)
+  )
 })
 
-// Clear selection when unchecking the "add segment" checkbox
 watch(shouldAddSegment, (newValue) => {
   if (!newValue) {
     selectedSet.value = null
@@ -75,459 +79,146 @@ onMounted(async () => {
 
 async function handleSubmit() {
   if (!isValid.value || isSubmitting.value) return
-
   isSubmitting.value = true
 
   try {
     let binderId: string | undefined
     let segmentId: string | undefined
 
-    // Create binder or box if requested
     if (shouldCreateBinder.value && binderName.value.trim()) {
       const containerConfig = binderContainerType.value === 'binder'
-        ? {
-            type: 'binder' as const,
-            pageCount: binderPageCount.value,
-            slotsPerPage: binderSlotsPerPage.value
-          }
+        ? { type: 'binder' as const, pageCount: binderPageCount.value, slotsPerPage: binderSlotsPerPage.value }
         : { type: 'box' as const }
 
-      const binder = await bindersStore.addBinder(
-        binderName.value.trim(),
-        containerConfig
-      )
+      const binder = await bindersStore.addBinder(binderName.value.trim(), containerConfig)
       binderId = binder.id
     }
 
-    // Create segment if a set was selected
     if (shouldAddSegment.value && selectedSet.value) {
-      // Fetch all cards from the selected set
       const cards = await fetchSetCards(selectedSet.value.code)
       const cardIds = cards.map(card => card.id)
-
-      const segment = segmentsStore.addSegment(
-        selectedSet.value.name,
-        selectedSet.value.code,
-        cardIds
-      )
+      const segment = segmentsStore.addSegment(selectedSet.value.name, selectedSet.value.code, cardIds)
       segmentId = segment.id
     }
 
-    emit('submit', {
-      name: setName.value.trim(),
-      binderId,
-      segmentId
-    })
+    emit('submit', { name: setName.value.trim(), binderId, segmentId })
   } finally {
     isSubmitting.value = false
   }
 }
 
-function handleCancel() {
-  emit('cancel')
-}
+const selectClass =
+  'w-full rounded-md border border-line bg-surface px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
 </script>
 
 <template>
-  <div class="modal-overlay">
-    <div class="modal">
-      <h2>Create New Set</h2>
-
-      <div class="form-section">
-        <label class="form-label required">
-          Set Name
-        </label>
-        <input
-          v-model="setName"
-          type="text"
-          placeholder="Enter set name..."
-          class="form-input"
-          autofocus
-          @keyup.enter="isValid && handleSubmit()"
-        />
+  <Dialog v-model:open="open" size="lg" title="Create new set">
+    <div class="flex flex-col gap-5">
+      <!-- set name -->
+      <div class="flex flex-col gap-1.5">
+        <label class="text-sm font-medium text-ink-soft">Set name <span class="text-skipped">*</span></label>
+        <Input v-model="setName" autofocus placeholder="Enter set name…" @keyup.enter="isValid && handleSubmit()" />
       </div>
 
-      <div class="form-section">
-        <label class="checkbox-label">
-          <input type="checkbox" v-model="shouldCreateBinder" />
+      <!-- add storage -->
+      <div class="flex flex-col gap-2">
+        <label class="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
+          <input v-model="shouldCreateBinder" type="checkbox" class="size-4 cursor-pointer accent-brand" />
           <span>Add storage</span>
         </label>
 
-        <div v-if="shouldCreateBinder" class="nested-form">
-          <div class="form-group">
-            <label class="form-label required">Storage Name</label>
-            <input
-              v-model="binderName"
-              type="text"
-              placeholder="Enter storage name..."
-              class="form-input"
-            />
+        <div v-if="shouldCreateBinder" class="ml-1 flex flex-col gap-3 border-l-2 border-line pl-4">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-ink-soft">Storage name <span class="text-skipped">*</span></label>
+            <Input v-model="binderName" placeholder="Enter storage name…" />
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Storage Type</label>
-            <select v-model="binderContainerType" class="form-input">
-              <option value="binder">Binder (Pages & Slots)</option>
-              <option value="box">Storage Box (Unlimited)</option>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-ink-soft">Storage type</label>
+            <select v-model="binderContainerType" :class="selectClass">
+              <option value="binder">Binder (pages & slots)</option>
+              <option value="box">Storage box (unlimited)</option>
             </select>
           </div>
 
           <template v-if="binderContainerType === 'binder'">
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">Pages</label>
-                <input
-                  v-model.number="binderPageCount"
-                  type="number"
-                  min="1"
-                  max="100"
-                  class="form-input"
-                />
+            <div class="grid grid-cols-2 gap-3">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-sm font-medium text-ink-soft">Pages</label>
+                <Input v-model.number="binderPageCount" type="number" min="1" max="100" />
               </div>
-
-              <div class="form-group">
-                <label class="form-label">Slots per Page</label>
-                <select v-model.number="binderSlotsPerPage" class="form-input">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-sm font-medium text-ink-soft">Slots per page</label>
+                <select v-model.number="binderSlotsPerPage" :class="selectClass">
                   <option :value="9">9 (3×3)</option>
                   <option :value="12">12 (4×3)</option>
                 </select>
               </div>
             </div>
-            <div class="capacity-info">
-              Capacity: {{ binderPageCount * binderSlotsPerPage }} cards
-            </div>
+            <p class="text-sm tabular-nums text-ink-soft">Capacity: {{ binderPageCount * binderSlotsPerPage }} cards</p>
           </template>
 
-          <p v-else class="box-info">
+          <p v-else class="text-sm italic text-ink-soft">
             Storage boxes have unlimited capacity for flexible card organization.
           </p>
         </div>
       </div>
 
-      <div v-if="!shouldCreateBinder || binderContainerType !== 'box'" class="form-section">
-        <label class="checkbox-label">
-          <input type="checkbox" v-model="shouldAddSegment" />
+      <!-- add segment -->
+      <div v-if="!shouldCreateBinder || binderContainerType !== 'box'" class="flex flex-col gap-2">
+        <label class="flex cursor-pointer select-none items-center gap-2 text-sm font-medium">
+          <input v-model="shouldAddSegment" type="checkbox" class="size-4 cursor-pointer accent-brand" />
           <span>Select and add a set</span>
         </label>
 
-        <div v-if="shouldAddSegment" class="nested-form">
-          <input
-            v-model="setSearchQuery"
-            type="text"
-            placeholder="Search for a set..."
-            class="form-input"
-          />
+        <div v-if="shouldAddSegment" class="ml-1 flex flex-col gap-2 border-l-2 border-line pl-4">
+          <Input v-model="setSearchQuery" placeholder="Search for a set…" />
 
-          <div v-if="setsLoading" class="loading-text">Loading sets...</div>
-          <div v-else-if="setsError" class="error-text">{{ setsError }}</div>
-          <div v-else-if="selectedSet" class="selected-set">
-            <div class="selected-set-info">
-              <img :src="selectedSet.icon_svg_uri" :alt="selectedSet.name" class="set-icon-small" />
-              <div>
-                <div class="set-name-text">{{ selectedSet.name }}</div>
-                <div class="set-meta-text">{{ selectedSet.code.toUpperCase() }} • {{ selectedSet.card_count }} cards</div>
+          <p v-if="setsLoading" class="py-2 text-center text-sm text-ink-soft">Loading sets…</p>
+          <p v-else-if="setsError" class="py-2 text-center text-sm text-skipped">{{ setsError }}</p>
+
+          <div
+            v-else-if="selectedSet"
+            class="flex items-center justify-between gap-2 rounded-md border border-brand bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] p-2"
+          >
+            <div class="flex min-w-0 items-center gap-2.5">
+              <img :src="selectedSet.icon_svg_uri" :alt="selectedSet.name" class="h-7 w-7 shrink-0 dark:invert" />
+              <div class="min-w-0">
+                <div class="truncate text-sm font-medium">{{ selectedSet.name }}</div>
+                <div class="text-xs tabular-nums text-ink-soft">{{ selectedSet.code.toUpperCase() }} • {{ selectedSet.card_count }} cards</div>
               </div>
             </div>
-            <button @click="selectedSet = null" class="btn-clear" type="button">×</button>
+            <button type="button" class="grid h-7 w-7 shrink-0 place-items-center rounded text-ink-soft hover:text-skipped" aria-label="Clear selected set" @click="selectedSet = null">
+              <X :size="16" />
+            </button>
           </div>
-          <div v-else-if="filteredSets.length > 0" class="set-results">
+
+          <div v-else-if="filteredSets.length > 0" class="flex max-h-55 flex-col gap-1.5 overflow-y-auto">
             <button
               v-for="set in filteredSets"
               :key="set.code"
-              @click="handleSetSelected(set)"
-              class="set-result-item"
               type="button"
+              class="flex items-center gap-2.5 rounded-md border border-line bg-surface-2 p-2 text-left transition-colors hover:border-brand hover:bg-surface-3"
+              @click="handleSetSelected(set)"
             >
-              <img :src="set.icon_svg_uri" :alt="set.name" class="set-icon-small" />
-              <div class="set-result-info">
-                <div class="set-name-text">{{ set.name }}</div>
-                <div class="set-meta-text">{{ set.code.toUpperCase() }} • {{ set.card_count }} cards</div>
+              <img :src="set.icon_svg_uri" :alt="set.name" class="h-7 w-7 shrink-0 dark:invert" />
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium">{{ set.name }}</div>
+                <div class="text-xs tabular-nums text-ink-soft">{{ set.code.toUpperCase() }} • {{ set.card_count }} cards</div>
               </div>
             </button>
           </div>
-          <div v-else class="no-results-text">No sets found</div>
+
+          <p v-else class="py-2 text-center text-sm text-ink-soft">No sets found</p>
         </div>
       </div>
-
-      <div class="modal-actions">
-        <button @click="handleCancel" class="btn btn-secondary" :disabled="isSubmitting">Cancel</button>
-        <button
-          @click="handleSubmit"
-          class="btn btn-primary"
-          :disabled="!isValid || isSubmitting"
-        >
-          {{ isSubmitting ? 'Loading cards...' : 'Create Set' }}
-        </button>
-      </div>
     </div>
-  </div>
+
+    <template #footer>
+      <Button variant="ghost" :disabled="isSubmitting" @click="open = false">Cancel</Button>
+      <Button :disabled="!isValid || isSubmitting" @click="handleSubmit">
+        {{ isSubmitting ? 'Loading cards…' : 'Create set' }}
+      </Button>
+    </template>
+  </Dialog>
 </template>
-
-<style scoped>
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: #fff;
-  padding: 2rem;
-  border-radius: 8px;
-  width: 100%;
-  max-width: 500px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-}
-
-.modal h2 {
-  margin: 0 0 1.5rem 0;
-  font-size: 1.5rem;
-  color: #333;
-}
-
-.form-section {
-  margin-bottom: 1.5rem;
-}
-
-.form-section:last-of-type {
-  margin-bottom: 2rem;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #333;
-}
-
-.form-label.required::after {
-  content: ' *';
-  color: #dc3545;
-}
-
-.form-input {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #4a90d9;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.95rem;
-  color: #333;
-  cursor: pointer;
-  user-select: none;
-}
-
-.checkbox-label input[type="checkbox"] {
-  cursor: pointer;
-  width: 18px;
-  height: 18px;
-}
-
-.checkbox-label span {
-  font-weight: 500;
-}
-
-.nested-form {
-  margin-top: 1rem;
-  padding-left: 1.5rem;
-  border-left: 3px solid #e0e0e0;
-}
-
-.form-group {
-  margin-bottom: 1rem;
-}
-
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-
-.capacity-info {
-  margin-top: 0.5rem;
-  font-size: 0.875rem;
-  color: #666;
-}
-
-.box-info {
-  margin-top: 0.5rem;
-  margin-bottom: 0;
-  font-size: 0.875rem;
-  color: #666;
-  font-style: italic;
-}
-
-.loading-text,
-.error-text,
-.no-results-text {
-  padding: 0.75rem;
-  font-size: 0.875rem;
-  color: #666;
-  text-align: center;
-}
-
-.error-text {
-  color: #dc3545;
-}
-
-.set-results {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-  margin-top: 0.5rem;
-  max-height: 220px;
-  overflow-y: auto;
-  padding-left: 0.5rem;
-}
-
-.set-result-item {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  padding: 0.5rem;
-  background: #f8f8f8;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: left;
-}
-
-.set-result-item:hover {
-  background: #e8f4ff;
-  border-color: #4a90d9;
-}
-
-.set-icon-small {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-}
-
-.set-result-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.set-name-text {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #333;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-}
-
-.set-meta-text {
-  font-size: 0.7rem;
-  color: #666;
-  margin-top: 0.1rem;
-  line-height: 1.2;
-}
-
-.selected-set {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem;
-  background: #e8f4ff;
-  border: 1px solid #4a90d9;
-  border-radius: 4px;
-  margin-top: 0.5rem;
-}
-
-.selected-set-info {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  flex: 1;
-}
-
-.btn-clear {
-  background: none;
-  border: none;
-  color: #666;
-  font-size: 1.5rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0.25rem 0.5rem;
-  transition: color 0.2s;
-}
-
-.btn-clear:hover {
-  color: #dc3545;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eee;
-}
-
-.btn {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: background 0.2s;
-  font-weight: 500;
-}
-
-.btn-primary {
-  background: #4a90d9;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #3a7bc8;
-}
-
-.btn-primary:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.btn-secondary {
-  background: #6c757d;
-  color: white;
-}
-
-.btn-secondary:hover {
-  background: #5a6268;
-}
-
-.btn-full {
-  width: 100%;
-  text-align: center;
-}
-</style>
