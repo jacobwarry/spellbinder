@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { Segment, Binder } from '@/types'
 import { useCollectionStore } from '@/stores'
 import { getCachedCards, fetchSets } from '@/api/scryfall'
+import { ChevronUp, ChevronDown, Pencil, Trash2 } from 'lucide-vue-next'
 
 const props = defineProps<{
   segment: Segment
@@ -51,19 +52,21 @@ function handleTargetBinderChange(event: Event) {
   emit('updateTargetBinder', props.segment, binderId)
 }
 
-async function copyForMtgprint() {
-  const missingIndices: number[] = []
-  props.segment.cardIds.forEach((_, index) => {
+function missingIds(): string[] {
+  const ids: string[] = []
+  props.segment.cardIds.forEach((id, index) => {
     const key = `${props.segment.id}:${index}`
-    if (!collectionStore.isOwned(key) && !collectionStore.isSkipped(key)) {
-      missingIndices.push(index)
-    }
+    if (!collectionStore.isOwned(key) && !collectionStore.isSkipped(key)) ids.push(id)
   })
-  const missingIds = missingIndices.map(i => props.segment.cardIds[i]!)
-  if (missingIds.length === 0) return
+  return ids
+}
 
-  const cardMap = await getCachedCards(missingIds)
-  const lines = missingIds
+async function copyForMtgprint() {
+  const ids = missingIds()
+  if (ids.length === 0) return
+
+  const cardMap = await getCachedCards(ids)
+  const lines = ids
     .map(id => cardMap.get(id))
     .filter((card): card is NonNullable<typeof card> => card !== undefined)
     .map(card => `${card.name} (${card.set.toUpperCase()}) ${card.collector_number}`)
@@ -74,23 +77,16 @@ async function copyForMtgprint() {
 }
 
 async function copyForCardmarket() {
-  const missingIndices: number[] = []
-  props.segment.cardIds.forEach((_, index) => {
-    const key = `${props.segment.id}:${index}`
-    if (!collectionStore.isOwned(key) && !collectionStore.isSkipped(key)) {
-      missingIndices.push(index)
-    }
-  })
-  const missingIds = missingIndices.map(i => props.segment.cardIds[i]!)
-  if (missingIds.length === 0) return
+  const ids = missingIds()
+  if (ids.length === 0) return
 
   const [cardMap, sets] = await Promise.all([
-    getCachedCards(missingIds),
+    getCachedCards(ids),
     fetchSets()
   ])
 
   const setNameMap = new Map(sets.map(s => [s.code, s.name]))
-  const lines = missingIds
+  const lines = ids
     .map(id => cardMap.get(id))
     .filter((card): card is NonNullable<typeof card> => card !== undefined)
     .map(card => `${card.name} (${card.set_name || setNameMap.get(card.set) || card.set.toUpperCase()}) ${card.collector_number}`)
@@ -102,244 +98,59 @@ async function copyForCardmarket() {
 </script>
 
 <template>
-  <div class="segment-card" @click="$emit('navigate', segment)">
-    <div class="segment-info">
-      <h3>{{ segment.name }}</h3>
-      <p class="segment-stats">
-        {{ segment.cardIds.length }} cards from {{ segment.scryfallSetCode.toUpperCase() }}
-      </p>
-      <p class="segment-owned">
-        <span class="owned-count" :class="{ complete: ownedPercentage === 100 }">{{ ownedCount }}</span> / {{ segment.cardIds.length }} owned
-        <span class="owned-percentage" :class="{ complete: ownedPercentage === 100 }">({{ ownedPercentage }}%)</span>
-        <span v-if="skippedCount > 0" class="skipped-count">· {{ skippedCount }} skipped</span>
-      </p>
-      <div class="segment-offset">
-        <label>Offset:</label>
-        <input
-          type="number"
-          :value="segment.offset"
-          @change="handleOffsetChange"
-          min="0"
-          max="9"
-          class="offset-input"
-          title="Skip this many slots before placing cards (0-9)"
-        />
-        <span class="offset-hint">slots</span>
-      </div>
-      <div class="segment-target">
-        <label>Target:</label>
-        <select
-          :value="segment.targetBinderId ?? ''"
-          @change="handleTargetBinderChange"
-          class="target-select"
-          title="Target binder for this segment (auto-fill if not set)"
-        >
-          <option value="">Auto</option>
-          <option v-for="binder in binders" :key="binder.id" :value="binder.id">
-            {{ binder.name }}
-          </option>
-        </select>
-      </div>
-      <div class="segment-copy">
-        <button @click.stop="copyForMtgprint" class="btn-copy">MTGPRINT</button>
-        <button @click.stop="copyForCardmarket" class="btn-copy">CARDMARKET</button>
-      </div>
+  <div
+    class="relative cursor-pointer rounded-lg border border-line bg-surface p-3 pr-14 transition-colors hover:border-line-strong"
+    @click="$emit('navigate', segment)"
+  >
+    <h3 class="text-sm font-semibold">{{ segment.name }}</h3>
+    <p class="mt-0.5 text-sm text-ink-soft tabular-nums">
+      {{ segment.cardIds.length }} cards from {{ segment.scryfallSetCode.toUpperCase() }}
+    </p>
+    <p class="mt-0.5 text-xs text-ink-faint tabular-nums">
+      <span class="font-medium" :class="ownedPercentage === 100 && 'text-owned'">{{ ownedCount }}</span> / {{ segment.cardIds.length }} owned
+      <span :class="ownedPercentage === 100 && 'text-owned'">({{ ownedPercentage }}%)</span>
+      <span v-if="skippedCount > 0" class="text-skipped">· {{ skippedCount }} skipped</span>
+    </p>
+
+    <div class="mt-2 flex items-center gap-2 text-xs text-ink-soft" @click.stop>
+      <label class="font-medium" :for="`offset-${segment.id}`">Offset</label>
+      <input
+        :id="`offset-${segment.id}`"
+        type="number"
+        :value="segment.offset"
+        min="0"
+        max="9"
+        title="Skip this many slots before placing cards (0-9)"
+        class="h-7 w-14 rounded-md border border-input bg-surface-2 px-2 text-center text-foreground outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-(--accent-glow)"
+        @change="handleOffsetChange"
+      />
+      <span class="text-ink-faint">slots</span>
     </div>
-    <div class="segment-actions">
-      <button @click.stop="$emit('moveUp', segment)" class="btn-icon" title="Move up">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="18 15 12 9 6 15"/>
-        </svg>
-      </button>
-      <button @click.stop="$emit('moveDown', segment)" class="btn-icon" title="Move down">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </button>
-      <button @click.stop="$emit('edit', segment)" class="btn-icon" title="Edit">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-        </svg>
-      </button>
-      <button @click.stop="$emit('remove', segment)" class="btn-icon btn-icon-danger" title="Remove">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"/>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          <line x1="10" y1="11" x2="10" y2="17"/>
-          <line x1="14" y1="11" x2="14" y2="17"/>
-        </svg>
-      </button>
+
+    <div class="mt-2 flex items-center gap-2 text-xs text-ink-soft" @click.stop>
+      <label class="font-medium" :for="`target-${segment.id}`">Target</label>
+      <select
+        :id="`target-${segment.id}`"
+        :value="segment.targetBinderId ?? ''"
+        title="Target binder for this segment (auto-fill if not set)"
+        class="h-7 min-w-24 rounded-md border border-input bg-surface-2 px-2 text-foreground outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-(--accent-glow)"
+        @change="handleTargetBinderChange"
+      >
+        <option value="">Auto</option>
+        <option v-for="binder in binders" :key="binder.id" :value="binder.id">{{ binder.name }}</option>
+      </select>
+    </div>
+
+    <div class="mt-2 flex gap-2" @click.stop>
+      <button class="rounded-md bg-brand px-2 py-1 text-[11px] font-semibold text-primary-foreground transition hover:brightness-110" @click="copyForMtgprint">MTGPRINT</button>
+      <button class="rounded-md bg-brand px-2 py-1 text-[11px] font-semibold text-primary-foreground transition hover:brightness-110" @click="copyForCardmarket">CARDMARKET</button>
+    </div>
+
+    <div class="absolute right-3 top-3 flex gap-1">
+      <button class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" title="Move up" aria-label="Move up" @click.stop="$emit('moveUp', segment)"><ChevronUp :size="14" /></button>
+      <button class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" title="Move down" aria-label="Move down" @click.stop="$emit('moveDown', segment)"><ChevronDown :size="14" /></button>
+      <button class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" title="Edit" aria-label="Edit segment" @click.stop="$emit('edit', segment)"><Pencil :size="14" /></button>
+      <button class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-(--skipped-soft) hover:text-skipped focus-visible:ring-2 focus-visible:ring-ring" title="Remove" aria-label="Remove segment" @click.stop="$emit('remove', segment)"><Trash2 :size="14" /></button>
     </div>
   </div>
 </template>
-
-<style scoped>
-.segment-card {
-  position: relative;
-  padding: 1rem;
-  padding-right: 4rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fff;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.segment-card:hover {
-  background: #f9f9f9;
-}
-
-.segment-info h3 {
-  margin: 0 0 0.375rem 0;
-  font-size: 1rem;
-}
-
-.segment-stats {
-  margin: 0;
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.segment-owned {
-  margin: 0.125rem 0 0 0;
-  color: #888;
-  font-size: 0.75rem;
-}
-
-.owned-count {
-  font-weight: 500;
-}
-
-.owned-count.complete {
-  color: #28a745;
-}
-
-.owned-percentage {
-  color: #999;
-}
-
-.owned-percentage.complete {
-  color: #28a745;
-}
-
-.skipped-count {
-  color: #dc3545;
-  margin-left: 0.25rem;
-}
-
-.segment-offset {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  color: #888;
-}
-
-.segment-offset label {
-  font-weight: 500;
-}
-
-.offset-input {
-  width: 50px;
-  padding: 0.125rem 0.25rem;
-  border: 1px solid #ccc;
-  border-radius: 3px;
-  font-size: 0.75rem;
-  text-align: center;
-}
-
-.offset-input::-webkit-inner-spin-button,
-.offset-input::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.offset-input[type=number] {
-  -moz-appearance: textfield;
-}
-
-.offset-hint {
-  color: #999;
-}
-
-.segment-target {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  color: #888;
-}
-
-.segment-target label {
-  font-weight: 500;
-}
-
-.target-select {
-  padding: 0.125rem 0.25rem;
-  border: 1px solid #ccc;
-  border-radius: 3px;
-  font-size: 0.75rem;
-  min-width: 80px;
-}
-
-.segment-copy {
-  display: flex;
-  justify-content: flex-start;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.btn-copy {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  background: #4a90d9;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.btn-copy:hover {
-  background: #3a7bc8;
-}
-
-.segment-actions {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  display: flex;
-  gap: 0.25rem;
-}
-
-.btn-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #f5f5f5;
-  color: #666;
-  cursor: pointer;
-}
-
-.btn-icon:hover {
-  background: #e5e5e5;
-  color: #333;
-}
-
-.btn-icon-danger {
-  color: #c00;
-  border-color: #c00;
-}
-
-.btn-icon-danger:hover {
-  background: #fee;
-  color: #a00;
-}
-</style>

@@ -2,6 +2,7 @@
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import type { Binder } from '@/types'
 import { getBinderImage } from '@/utils/binderImages'
+import { Pencil, Trash2 } from 'lucide-vue-next'
 
 const props = withDefaults(defineProps<{
   binder: Binder
@@ -78,199 +79,53 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="binder-card" :class="[fillStatus, { selected, 'has-cover': coverImageUrl }]">
-    <div v-if="coverImageUrl" class="binder-cover-thumbnail">
-      <img :src="coverImageUrl" :alt="`${binder.name} cover`" />
+  <div
+    class="relative flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors"
+    :class="selected ? 'border-brand bg-(--accent-soft)' : 'border-line bg-surface hover:border-line-strong'"
+  >
+    <div v-if="coverImageUrl" class="h-21 w-15 shrink-0 overflow-hidden rounded border border-line bg-surface-2">
+      <img :src="coverImageUrl" :alt="`${binder.name} cover`" class="h-full w-full object-cover" />
     </div>
-    <div class="binder-info">
-      <h3 class="binder-title">
-        {{ binder.name }}
-        <span v-if="binder.type === 'box'" class="type-badge box-badge">Box</span>
+    <div class="min-w-0 flex-1" :class="showActions && 'pr-14'">
+      <h3 class="flex items-center gap-2 text-sm font-semibold">
+        <span class="truncate">{{ binder.name }}</span>
+        <span v-if="binder.type === 'box'" class="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Box</span>
       </h3>
-      <p class="binder-stats">
+      <p class="mt-0.5 text-sm text-ink-soft tabular-nums">
         <template v-if="plannedCards !== undefined">
-          <span class="planned-count" :class="fillStatus">{{ plannedCards }}</span>
-          <template v-if="binder.type === 'binder'">
-            / {{ capacity }} cards ({{ binder.pageCount }} pages)
-          </template>
-          <template v-else>
-            cards
-          </template>
+          <span
+            class="font-semibold"
+            :class="fillStatus === 'overflow' ? 'text-skipped' : fillStatus === 'full' ? 'text-owned' : 'text-foreground'"
+          >{{ plannedCards }}</span>
+          <template v-if="binder.type === 'binder'"> / {{ capacity }} cards ({{ binder.pageCount }} pages)</template>
+          <template v-else> cards</template>
         </template>
         <template v-else>
-          <template v-if="binder.type === 'binder'">
-            {{ capacity }} cards ({{ binder.pageCount }} pages)
-          </template>
-          <template v-else>
-            Unlimited capacity
-          </template>
+          <template v-if="binder.type === 'binder'">{{ capacity }} cards ({{ binder.pageCount }} pages)</template>
+          <template v-else>Unlimited capacity</template>
         </template>
       </p>
-      <p v-if="plannedCards !== undefined && plannedCards > 0" class="binder-owned">
-        <span class="owned-count" :class="{ complete: ownedPercentage === 100 }">{{ ownedCards ?? 0 }}</span> / {{ plannedCards }} owned
+      <p v-if="plannedCards !== undefined && plannedCards > 0" class="mt-1 text-xs text-ink-faint tabular-nums">
+        <span class="font-medium" :class="ownedPercentage === 100 && 'text-owned'">{{ ownedCards ?? 0 }}</span> / {{ plannedCards }} owned
       </p>
     </div>
-    <div v-if="showActions" class="binder-actions">
-      <button @click.stop="$emit('edit', binder)" class="btn-icon" title="Edit">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-        </svg>
+    <div v-if="showActions" class="absolute right-3 top-3 flex gap-1">
+      <button
+        class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        title="Edit"
+        aria-label="Edit storage"
+        @click.stop="$emit('edit', binder)"
+      >
+        <Pencil :size="14" />
       </button>
-      <button @click.stop="$emit('remove', binder)" class="btn-icon btn-icon-danger" title="Remove">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"/>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          <line x1="10" y1="11" x2="10" y2="17"/>
-          <line x1="14" y1="11" x2="14" y2="17"/>
-        </svg>
+      <button
+        class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-(--skipped-soft) hover:text-skipped focus-visible:ring-2 focus-visible:ring-ring"
+        title="Remove"
+        aria-label="Remove storage"
+        @click.stop="$emit('remove', binder)"
+      >
+        <Trash2 :size="14" />
       </button>
     </div>
   </div>
 </template>
-
-<style scoped>
-.binder-card {
-  position: relative;
-  display: flex;
-  gap: 1rem;
-  padding: 1rem;
-  padding-right: 4rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fff;
-  cursor: pointer;
-}
-
-.binder-cover-thumbnail {
-  flex-shrink: 0;
-  width: 60px;
-  height: 84px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: #f0f0f0;
-  border: 1px solid #ddd;
-}
-
-.binder-cover-thumbnail img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.binder-card:hover {
-  border-color: #4a90d9;
-}
-
-.binder-card.selected {
-  border-color: #4a90d9;
-  background: #f0f7ff;
-  box-shadow: 0 0 0 1px #4a90d9;
-}
-
-.binder-title {
-  margin: 0 0 0.25rem 0;
-  font-size: 1rem;
-}
-
-.binder-format {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.75rem;
-  color: #888;
-  font-weight: normal;
-}
-
-.binder-stats {
-  margin: 0;
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.binder-owned {
-  margin: 0.25rem 0 0 0;
-  color: #888;
-  font-size: 0.75rem;
-}
-
-.owned-count {
-  font-weight: 500;
-}
-
-.owned-count.complete {
-  color: #28a745;
-}
-
-.owned-percentage {
-  color: #999;
-}
-
-.owned-percentage.complete {
-  color: #28a745;
-}
-
-.planned-count {
-  font-weight: 600;
-}
-
-.planned-count.partial {
-  color: #333;
-}
-
-.planned-count.full {
-  color: #28a745;
-}
-
-.planned-count.overflow {
-  color: #dc3545;
-}
-
-.binder-actions {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  display: flex;
-  gap: 0.25rem;
-}
-
-.btn-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #f5f5f5;
-  color: #666;
-  cursor: pointer;
-}
-
-.btn-icon:hover {
-  background: #e5e5e5;
-  color: #333;
-}
-
-.btn-icon-danger {
-  color: #c00;
-  border-color: #c00;
-}
-
-.btn-icon-danger:hover {
-  background: #fee;
-  color: #a00;
-}
-
-.type-badge {
-  font-size: 0.7rem;
-  padding: 0.15rem 0.4rem;
-  border-radius: 3px;
-  margin-left: 0.5rem;
-  font-weight: 600;
-}
-
-.box-badge {
-  background-color: #6c757d;
-  color: white;
-}
-</style>

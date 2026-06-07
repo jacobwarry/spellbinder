@@ -2,6 +2,8 @@
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import type { Binder, ContainerType } from '@/types'
 import { getTargetDimensions, getBinderImage } from '@/utils/binderImages'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 
 const props = defineProps<{
   binder?: Binder
@@ -144,246 +146,78 @@ function handleSubmit() {
     })
   }
 }
+
+const selectClass =
+  'h-11 w-full rounded-md border border-input bg-surface-2 px-3 text-base text-foreground outline-none focus-visible:border-brand focus-visible:ring-4 focus-visible:ring-(--accent-glow)'
 </script>
 
 <template>
-  <form @submit.prevent="handleSubmit" class="binder-form">
-    <div class="form-group">
-      <label for="name">Name</label>
-      <input id="name" v-model="name" type="text" placeholder="My Binder or Box" required />
+  <form class="flex flex-col gap-4" @submit.prevent="handleSubmit">
+    <div class="flex flex-col gap-1.5">
+      <label for="name" class="text-sm font-medium text-ink-soft">Name</label>
+      <Input id="name" v-model="name" placeholder="My binder or box" required />
     </div>
 
-    <div class="form-group">
-      <label for="containerType">Storage Type</label>
-      <select id="containerType" v-model="containerType">
-        <option value="binder">Binder (Pages & Slots)</option>
-        <option value="box">Storage Box (Unlimited)</option>
+    <div class="flex flex-col gap-1.5">
+      <label for="containerType" class="text-sm font-medium text-ink-soft">Storage type</label>
+      <select id="containerType" v-model="containerType" :class="selectClass">
+        <option value="binder">Binder (pages &amp; slots)</option>
+        <option value="box">Storage box (unlimited)</option>
       </select>
     </div>
 
-    <!-- Conditional: Show only for type='binder' -->
-    <div v-if="containerType === 'binder'" class="form-row">
-      <div class="form-group">
-        <label for="pageCount">Pages</label>
-        <input id="pageCount" v-model.number="pageCount" type="number" min="1" max="100" />
+    <div v-if="containerType === 'binder'" class="flex gap-4">
+      <div class="flex flex-1 flex-col gap-1.5">
+        <label for="pageCount" class="text-sm font-medium text-ink-soft">Pages</label>
+        <input id="pageCount" v-model.number="pageCount" type="number" inputmode="numeric" min="1" max="100" :class="selectClass" />
       </div>
-
-      <div class="form-group">
-        <label for="slotsPerPage">Slots per Page</label>
-        <select id="slotsPerPage" v-model.number="slotsPerPage">
+      <div class="flex flex-1 flex-col gap-1.5">
+        <label for="slotsPerPage" class="text-sm font-medium text-ink-soft">Slots per page</label>
+        <select id="slotsPerPage" v-model.number="slotsPerPage" :class="selectClass">
           <option :value="9">9 (3×3)</option>
           <option :value="12">12 (4×3)</option>
         </select>
       </div>
     </div>
 
-    <div v-if="containerType === 'binder'" class="form-info">
+    <p v-if="containerType === 'binder'" class="text-sm text-ink-soft tabular-nums">
       Capacity: {{ pageCount * slotsPerPage }} cards
-    </div>
-
-    <!-- Show capacity info for boxes -->
-    <p v-else class="box-info">
+    </p>
+    <p v-else class="text-sm italic text-ink-soft">
       Storage boxes have unlimited capacity for flexible card organization.
     </p>
 
-    <div class="form-group">
-      <label for="coverImage">Cover Image (optional)</label>
-      <p class="form-hint">
+    <div class="flex flex-col gap-1.5">
+      <label for="coverImage" class="text-sm font-medium text-ink-soft">Cover image (optional)</label>
+      <p class="text-xs text-ink-faint">
         Recommended: {{ targetDimensions.width }}×{{ targetDimensions.height }}px
         ({{ slotsPerPage === 9 ? '3×3' : '4×3' }} layout)
       </p>
 
-      <div v-if="coverImagePreview || existingImageUrl || isLoadingImage" class="image-preview-container">
-        <div class="image-preview" :style="{ aspectRatio: `${targetDimensions.width}/${targetDimensions.height}` }">
-          <img v-if="coverImagePreview" :src="coverImagePreview" alt="Cover preview" />
-          <img v-else-if="existingImageUrl" :src="existingImageUrl" alt="Current cover" />
-          <div v-else-if="isLoadingImage" class="loading-placeholder">
-            Loading...
-          </div>
+      <div v-if="coverImagePreview || existingImageUrl || isLoadingImage" class="mb-1 flex flex-col gap-2">
+        <div
+          class="flex w-full max-w-100 items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-line bg-surface-2"
+          :style="{ aspectRatio: `${targetDimensions.width}/${targetDimensions.height}` }"
+        >
+          <img v-if="coverImagePreview" :src="coverImagePreview" alt="Cover preview" class="h-full w-full object-cover" />
+          <img v-else-if="existingImageUrl" :src="existingImageUrl" alt="Current cover" class="h-full w-full object-cover" />
+          <div v-else-if="isLoadingImage" class="text-sm text-ink-faint">Loading…</div>
         </div>
-        <button type="button" @click="removeCoverImage" class="btn-remove-image">
-          Remove Image
-        </button>
+        <Button type="button" variant="ghost" size="sm" class="self-start text-skipped" @click="removeCoverImage">Remove image</Button>
       </div>
 
       <input
         id="coverImage"
         type="file"
         accept="image/*"
+        class="rounded-md border border-input bg-surface-2 p-2 text-sm text-ink-soft outline-none file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-primary-foreground hover:file:brightness-110"
         @change="handleImageSelected"
-        class="file-input"
       />
     </div>
 
-    <div class="form-actions">
-      <button type="button" @click="$emit('cancel')" class="btn btn-secondary">Cancel</button>
-      <button type="submit" class="btn btn-primary">{{ binder ? 'Update' : 'Add' }} Storage</button>
+    <div class="flex justify-end gap-2">
+      <Button type="button" variant="ghost" @click="$emit('cancel')">Cancel</Button>
+      <Button type="submit">{{ binder ? 'Update' : 'Add' }} storage</Button>
     </div>
   </form>
 </template>
-
-<style scoped>
-.binder-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.form-group label {
-  font-weight: 500;
-  font-size: 0.875rem;
-}
-
-.form-group input,
-.form-group select {
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.form-row {
-  display: flex;
-  gap: 1rem;
-}
-
-.form-row .form-group {
-  flex: 1;
-}
-
-.form-info {
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.btn-primary {
-  background: #4a90d9;
-  color: white;
-}
-
-.btn-primary:hover {
-  background: #3a7bc8;
-}
-
-.btn-secondary {
-  background: #e5e5e5;
-  color: #333;
-}
-
-.btn-secondary:hover {
-  background: #d5d5d5;
-}
-
-.form-hint {
-  font-size: 0.75rem;
-  color: #888;
-  margin: 0.25rem 0 0.5rem 0;
-}
-
-.image-preview-container {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.image-preview {
-  width: 100%;
-  max-width: 400px;
-  border: 2px dashed #ddd;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #f5f5f5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.image-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.existing-image-placeholder {
-  padding: 2rem;
-  text-align: center;
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.loading-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  color: #999;
-  font-size: 0.875rem;
-  background: #f9f9f9;
-}
-
-.btn-remove-image {
-  align-self: flex-start;
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-  background: #dc3545;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.btn-remove-image:hover {
-  background: #c82333;
-}
-
-.file-input {
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-.file-input::-webkit-file-upload-button {
-  padding: 0.5rem 1rem;
-  background: #4a90d9;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  margin-right: 0.5rem;
-}
-
-.file-input::-webkit-file-upload-button:hover {
-  background: #3a7bc8;
-}
-
-.box-info {
-  color: #666;
-  font-size: 0.875rem;
-  font-style: italic;
-  margin: 0;
-}
-</style>

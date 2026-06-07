@@ -1146,8 +1146,8 @@ onUnmounted(() => {
       </template>
 
       <template v-else-if="showBinderForm">
-        <div class="modal-content">
-          <h2>{{ editingBinder ? 'Edit' : 'Add' }} Storage</h2>
+        <div class="mx-auto w-full max-w-xl">
+          <h2 class="mb-4 font-display text-xl font-bold tracking-tight">{{ editingBinder ? 'Edit' : 'Add' }} Storage</h2>
           <BinderForm
             :binder="editingBinder ?? undefined"
             @submit="handleBinderSubmit"
@@ -1157,12 +1157,10 @@ onUnmounted(() => {
       </template>
 
       <template v-else-if="showSetSelector">
-        <div class="modal-content">
-          <h2>Select Set</h2>
+        <div class="mx-auto w-full max-w-xl">
+          <h2 class="mb-4 font-display text-xl font-bold tracking-tight">Select set</h2>
           <SetSelector @select="handleSetSelect" />
-          <button @click="showSetSelector = false" class="btn btn-secondary" style="margin-top: 1rem">
-            Cancel
-          </button>
+          <Button variant="ghost" class="mt-4" @click="showSetSelector = false">Cancel</Button>
         </div>
       </template>
 
@@ -1177,12 +1175,10 @@ onUnmounted(() => {
       </template>
 
       <template v-else-if="showBoxCardSelector">
-        <div class="modal-content">
-          <h2>Select Set to Add Cards From</h2>
+        <div class="mx-auto w-full max-w-xl">
+          <h2 class="mb-4 font-display text-xl font-bold tracking-tight">Select set to add cards from</h2>
           <SetSelector @select="handleBoxSetSelect" />
-          <button @click="showBoxCardSelector = false" class="btn btn-secondary" style="margin-top: 1rem">
-            Cancel
-          </button>
+          <Button variant="ghost" class="mt-4" @click="showBoxCardSelector = false">Cancel</Button>
         </div>
       </template>
 

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import type { ScryfallSet } from '@/types'
 import { fetchSets } from '@/api/scryfall'
+import { Input } from '@/components/ui/input'
 
 const emit = defineEmits<{
   select: [set: ScryfallSet]
@@ -42,98 +43,24 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="set-selector">
-    <input
-      v-model="searchQuery"
-      type="text"
-      placeholder="Search sets..."
-      class="search-input"
-    />
+  <div class="flex flex-col gap-2">
+    <Input v-model="searchQuery" placeholder="Search sets…" />
 
-    <div v-if="loading" class="loading">Loading sets...</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
-    <div v-else class="set-list">
+    <div v-if="loading" class="py-4 text-center text-ink-soft">Loading sets…</div>
+    <div v-else-if="error" class="py-4 text-center text-skipped">{{ error }}</div>
+    <div v-else class="flex max-h-100 flex-col gap-1 overflow-y-auto">
       <button
         v-for="set in filteredSets"
         :key="set.code"
+        class="flex items-center gap-2.5 rounded-md border border-line bg-surface p-2 text-left outline-none transition-colors hover:border-line-strong hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
         @click="emit('select', set)"
-        class="set-item"
       >
-        <img :src="set.icon_svg_uri" :alt="set.name" class="set-icon" />
-        <div class="set-info">
-          <span class="set-name">{{ set.name }}</span>
-          <span class="set-meta">{{ set.code.toUpperCase() }} · {{ set.card_count }} cards</span>
+        <img :src="set.icon_svg_uri" :alt="set.name" class="h-6 w-6 dark:invert" />
+        <div class="flex min-w-0 flex-col">
+          <span class="truncate text-sm font-medium">{{ set.name }}</span>
+          <span class="text-xs text-ink-faint tabular-nums">{{ set.code.toUpperCase() }} · {{ set.card_count }} cards</span>
         </div>
       </button>
     </div>
   </div>
 </template>
-
-<style scoped>
-.set-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.search-input {
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-.loading,
-.error {
-  padding: 1rem;
-  text-align: center;
-  color: #666;
-}
-
-.error {
-  color: #c00;
-}
-
-.set-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.set-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid #eee;
-  border-radius: 4px;
-  background: #fff;
-  cursor: pointer;
-  text-align: left;
-}
-
-.set-item:hover {
-  background: #f5f5f5;
-}
-
-.set-icon {
-  width: 24px;
-  height: 24px;
-}
-
-.set-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.set-name {
-  font-weight: 500;
-}
-
-.set-meta {
-  font-size: 0.75rem;
-  color: #666;
-}
-</style>
