@@ -14,6 +14,9 @@ import SetSelector from '@/components/sets/SetSelector.vue'
 import CardPicker from '@/components/sets/CardPicker.vue'
 import BoxCardPicker from '@/components/sets/BoxCardPicker.vue'
 import CardSearchModal from '@/components/cards/CardSearchModal.vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Plus, ArrowLeft, Pencil, Check, X, Trash2, Lightbulb } from 'lucide-vue-next'
 import NewSetDialog from '@/components/plans/NewSetDialog.vue'
 
 const route = useRoute()
@@ -969,80 +972,66 @@ onUnmounted(() => {
 
 <template>
   <div class="plan-editor">
-    <aside class="sidebar">
-      <section class="sidebar-section">
-        <div class="section-header">
-          <h2>Sets</h2>
-          <button
+    <aside class="flex w-95 shrink-0 flex-col gap-6 overflow-y-auto border-r border-line bg-surface p-4">
+      <section class="flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <h2 class="font-display text-lg font-bold tracking-tight">Sets</h2>
+          <Button
             v-if="currentPlan"
-            @click="router.push('/sets')"
-            class="btn-back"
+            variant="ghost"
+            size="icon"
+            class="h-9 w-9"
             title="Back to overview"
+            aria-label="Back to overview"
+            @click="router.push('/sets')"
           >
-            ←
-          </button>
+            <ArrowLeft :size="18" />
+          </Button>
         </div>
-        <button @click="createNewPlan" class="btn btn-primary btn-full">+ New Set</button>
-        <div class="plan-list">
+        <Button class="w-full" @click="createNewPlan"><Plus :size="18" /> New Set</Button>
+        <div class="flex flex-col gap-1">
           <button
             v-for="plan in sortedPlans"
             :key="plan.id"
+            class="relative overflow-hidden rounded-md border px-3 py-2 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+            :class="plan.id === currentPlanId
+              ? 'border-brand text-foreground'
+              : 'border-line text-ink-soft hover:bg-surface-2 hover:text-foreground'"
             @click="selectPlan(plan)"
-            class="plan-item"
-            :class="{ active: plan.id === currentPlanId }"
           >
-            <span
-              class="plan-progress"
-              :style="{ width: `${planOwnedPercentage.get(plan.id) ?? 0}%` }"
-            ></span>
-            <span class="plan-name">{{ plan.name }}</span>
-            <span class="plan-percent">{{ planOwnedPercentage.get(plan.id) ?? 0 }}%</span>
+            <span class="absolute inset-y-0 left-0 bg-(--accent-soft)" :style="{ width: `${planOwnedPercentage.get(plan.id) ?? 0}%` }" aria-hidden="true"></span>
+            <span class="relative flex items-center justify-between gap-2">
+              <span class="truncate">{{ plan.name }}</span>
+              <span class="shrink-0 text-xs text-ink-faint tabular-nums">{{ planOwnedPercentage.get(plan.id) ?? 0 }}%</span>
+            </span>
           </button>
         </div>
       </section>
 
       <template v-if="currentPlan">
-        <section class="sidebar-section plan-actions">
-          <div class="plan-header">
+        <section class="flex flex-col gap-2">
+          <div class="flex items-center gap-2">
             <template v-if="editingPlanName">
-              <input
-                v-model="planNameInput"
-                @keyup.enter="savePlanName"
-                @keyup.escape="cancelEditPlanName"
-                class="plan-name-input"
-                autofocus
-              />
-              <button @click="savePlanName" class="btn-icon" title="Save">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </button>
-              <button @click="cancelEditPlanName" class="btn-icon" title="Cancel">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
+              <Input v-model="planNameInput" class="h-9" @keyup.enter="savePlanName" @keyup.escape="cancelEditPlanName" />
+              <Button variant="ghost" size="icon" class="h-9 w-9" title="Save" aria-label="Save" @click="savePlanName"><Check :size="16" /></Button>
+              <Button variant="ghost" size="icon" class="h-9 w-9" title="Cancel" aria-label="Cancel" @click="cancelEditPlanName"><X :size="16" /></Button>
             </template>
             <template v-else>
-              <h2>{{ currentPlan.name }}</h2>
-              <button @click="startEditPlanName" class="btn-icon" title="Rename">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-              </button>
+              <h2 class="min-w-0 flex-1 truncate font-display text-base font-bold tracking-tight">{{ currentPlan.name }}</h2>
+              <Button variant="ghost" size="icon" class="h-9 w-9" title="Rename" aria-label="Rename" @click="startEditPlanName"><Pencil :size="15" /></Button>
             </template>
           </div>
-          <button v-if="!editingPlanName" @click="deletePlan" class="btn btn-danger btn-small">Delete Set</button>
+          <Button v-if="!editingPlanName" variant="ghost" size="sm" class="self-start text-skipped" @click="deletePlan">
+            <Trash2 :size="15" /> Delete Set
+          </Button>
         </section>
 
-        <section class="sidebar-section">
-          <h2>Storage</h2>
-          <button @click="showBinderForm = true; editingBinder = null" class="btn btn-secondary btn-full">
-            + Add Storage
-          </button>
-          <div class="item-list">
+        <section class="flex flex-col gap-2">
+          <h2 class="font-display text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">Storage</h2>
+          <Button variant="secondary" class="w-full" @click="showBinderForm = true; editingBinder = null">
+            <Plus :size="18" /> Add Storage
+          </Button>
+          <div class="flex flex-col gap-2">
             <BinderCard
               v-for="binder in planBinders"
               :key="binder.id"
@@ -1057,12 +1046,12 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <section v-if="!viewingBinder || viewingBinder.type !== 'box'" class="sidebar-section">
-          <h2>Segments</h2>
-          <button @click="showSetSelector = true" class="btn btn-secondary btn-full">
-            + Add Segment
-          </button>
-          <div class="item-list">
+        <section v-if="!viewingBinder || viewingBinder.type !== 'box'" class="flex flex-col gap-2">
+          <h2 class="font-display text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">Segments</h2>
+          <Button variant="secondary" class="w-full" @click="showSetSelector = true">
+            <Plus :size="18" /> Add Segment
+          </Button>
+          <div class="flex flex-col gap-2">
             <SegmentCard
               v-for="segment in planSegments"
               :key="segment.id"
@@ -1078,21 +1067,21 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <section v-if="placementResult" class="sidebar-section">
-          <h2>Summary</h2>
-          <p class="summary-text">
+        <section v-if="placementResult" class="flex flex-col gap-2">
+          <h2 class="font-display text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">Summary</h2>
+          <p class="text-sm text-ink-soft tabular-nums">
             {{ placementResult.totalCards }} cards / {{ placementResult.totalCapacity }} capacity
           </p>
-          <div v-if="placementResult.overflow.length > 0" class="overflow-warning">
-            <strong>Overflow: {{ totalOverflowCount }} cards</strong>
-            <ul>
+          <div v-if="placementResult.overflow.length > 0" class="rounded-lg border border-[color-mix(in_srgb,var(--skipped)_35%,transparent)] bg-(--skipped-soft) p-3 text-sm">
+            <strong class="text-skipped">Overflow: {{ totalOverflowCount }} cards</strong>
+            <ul class="mt-1 list-disc pl-5 text-ink-soft">
               <li v-for="o in placementResult.overflow" :key="o.segmentId">
                 {{ o.segmentName }}: {{ o.overflowCount }} cards
               </li>
             </ul>
-            <button @click="addBinderForOverflow" class="btn btn-primary btn-small btn-full overflow-btn">
-              + Add Storage for Overflow
-            </button>
+            <Button class="mt-3 w-full" size="sm" @click="addBinderForOverflow">
+              <Plus :size="16" /> Add Storage for Overflow
+            </Button>
           </div>
         </section>
       </template>
@@ -1101,53 +1090,45 @@ onUnmounted(() => {
     <main class="main-content">
       <template v-if="!currentPlan">
         <!-- No sets exist -->
-        <div v-if="plansStore.plans.length === 0" class="empty-state">
-          <h2>Get Started with Your Collection</h2>
-          <p class="empty-description">
-            Click the <strong>"+ New Set"</strong> button to create your first set. You can add storage to organize your cards
-            and segments to track specific MTG sets from Scryfall.
+        <div v-if="plansStore.plans.length === 0" class="mx-auto max-w-xl py-16 text-center">
+          <h2 class="font-display text-2xl font-bold tracking-tight">Get started with your collection</h2>
+          <p class="mt-3 text-ink-soft">
+            Use <strong class="text-foreground">+ New Set</strong> to create your first set. Add storage to organize your
+            cards and segments to track specific MTG sets from Scryfall.
           </p>
-          <p class="empty-tip">
-            💡 <strong>Tip:</strong> When creating a set, you can optionally create storage and select a Scryfall set
-            all in one step to get started quickly!
-          </p>
+          <div class="mt-5 flex items-start gap-2.5 rounded-xl border border-line bg-(--accent-soft) p-4 text-left text-sm text-ink-soft">
+            <Lightbulb :size="18" class="mt-0.5 shrink-0 text-brand" />
+            <span><strong class="text-foreground">Tip:</strong> when creating a set you can also create storage and pick a Scryfall set in one step.</span>
+          </div>
         </div>
 
         <!-- Sets exist, show overview -->
-        <div v-else class="overview-section">
-          <h2>Your Sets</h2>
-          <p class="overview-subtitle">Click on a set to view and manage your collection</p>
+        <div v-else class="mx-auto max-w-6xl">
+          <h2 class="font-display text-2xl font-bold tracking-tight">Your Sets</h2>
+          <p class="mt-1 text-ink-soft">Click a set to view and manage your collection.</p>
 
-          <div class="sets-overview">
+          <div class="mt-6 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
             <div
               v-for="plan in sortedPlans"
               :key="plan.id"
-              class="set-overview-card"
+              class="rounded-xl border border-line bg-surface p-4 shadow-(--shadow-1) transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-(--shadow-2)"
             >
-              <div class="set-overview-header" @click="selectPlan(plan)">
-                <h3>{{ plan.name }}</h3>
-                <div class="set-completion">
-                  {{ planOwnedPercentage.get(plan.id) ?? 0 }}% complete
-                </div>
+              <div class="flex cursor-pointer items-start justify-between gap-3" @click="selectPlan(plan)">
+                <h3 class="min-w-0 truncate font-semibold">{{ plan.name }}</h3>
+                <span class="shrink-0 text-xs text-ink-faint tabular-nums">{{ planOwnedPercentage.get(plan.id) ?? 0 }}% complete</span>
               </div>
 
-              <div class="set-overview-stats" @click="selectPlan(plan)">
-                <div class="stat-item">
-                  <span class="stat-label">Segments:</span>
-                  <span class="stat-value">{{ plan.segmentIds.length }}</span>
-                </div>
+              <div class="mt-2 cursor-pointer text-sm text-ink-soft tabular-nums" @click="selectPlan(plan)">
+                Segments: {{ plan.segmentIds.length }}
               </div>
 
-              <div class="set-progress-bar" @click="selectPlan(plan)">
-                <div
-                  class="set-progress-fill"
-                  :style="{ width: `${planOwnedPercentage.get(plan.id) ?? 0}%` }"
-                ></div>
+              <div class="mt-2 h-2 cursor-pointer overflow-hidden rounded-full bg-surface-2" @click="selectPlan(plan)">
+                <div class="h-full rounded-full bg-(--accent-grad)" :style="{ width: `${planOwnedPercentage.get(plan.id) ?? 0}%` }"></div>
               </div>
 
-              <div v-if="plan.binderIds.length > 0" class="set-binders">
-                <h4>Storage</h4>
-                <div class="binder-list-compact">
+              <div v-if="plan.binderIds.length > 0" class="mt-4">
+                <h4 class="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-ink-faint">Storage</h4>
+                <div class="flex flex-col gap-2">
                   <BinderCard
                     v-for="binder in bindersStore.getBindersInOrder(plan.binderIds)"
                     :key="binder.id"
