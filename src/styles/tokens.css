@@ -1,0 +1,95 @@
+/* Spellbinder design tokens — Planar (refined).
+   Source of truth: design-system/MASTER.md §3–§7.
+   Light = :root, Dark = .dark (class strategy). Components must reference the
+   semantic tokens (or their Tailwind utilities), never raw hex. */
+
+:root {
+  /* surfaces / text / lines */
+  --bg: #eceaf5;
+  --surface: #ffffff;
+  --surface-2: #f3f1fb;
+  --surface-3: #e9e6f5;
+  --ink: #131022;
+  --ink-soft: #565078;
+  --ink-faint: #8b86a8;
+  --line: #e6e3f3;
+  --line-strong: #d4cfe8;
+
+  /* brand accent */
+  --accent: #6f48ff;
+  --accent-foreground: #ffffff;   /* text/icon on --accent (see MASTER §11) */
+  --accent-2: #1f93e6;
+  --accent-soft: rgba(111, 72, 255, .10);
+  --accent-glow: rgba(111, 72, 255, .18);
+
+  /* ownership / status */
+  --owned: #11a45f;
+  --owned-soft: rgba(17, 164, 95, .12);
+  --skipped: #e24a32;
+  --skipped-soft: rgba(226, 74, 50, .12);
+  --missing: #8b86a8;
+
+  /* binder surfaces */
+  --paper: #f7f5ff;
+  --paper-edge: #dcd6ee;
+  --ring: #b3acc9;
+  --ring-hi: #ffffff;
+
+  --scrim: rgba(30, 22, 70, .42);
+
+  /* mana data tokens (the five colors) */
+  --mana-w: #e9d49a;
+  --mana-u: #4aa3e8;
+  --mana-b: #534a66;
+  --mana-r: #ef5a44;
+  --mana-g: #4fc172;
+  --mana-c: #b7b1c8;
+
+  /* brand gradients */
+  --spectrum: linear-gradient(100deg, #e9d49a 0%, #4aa3e8 27%, #6b5f7e 50%, #ef5a44 73%, #4fc172 100%);
+  --accent-grad: linear-gradient(135deg, #6f48ff, #1f93e6);
+
+  /* radius / elevation / motion */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --shadow-1: 0 1px 3px rgba(30, 20, 80, .06), 0 6px 20px rgba(30, 20, 80, .08);
+  --shadow-2: 0 18px 50px rgba(80, 50, 200, .18);
+  --ease: cubic-bezier(.22, .61, .36, 1);
+}
+
+.dark {
+  --bg: #08070e;
+  --surface: #14121f;
+  --surface-2: #1c1930;
+  --surface-3: #252037;
+  --ink: #f2f0fb;
+  --ink-soft: #a7a2c6;
+  --ink-faint: #6f6a90;
+  --line: #241f3a;
+  --line-strong: #352e54;
+
+  --accent: #9a7dff;
+  --accent-foreground: #0d0a18;   /* dark text on the lighter dark-mode accent */
+  --accent-2: #6fccff;
+  --accent-soft: rgba(154, 125, 255, .14);
+  --accent-glow: rgba(154, 125, 255, .30);
+
+  --owned: #4fdd8f;
+  --owned-soft: rgba(79, 221, 143, .14);
+  --skipped: #ff7766;
+  --skipped-soft: rgba(255, 119, 102, .14);
+  --missing: #6f6a90;
+
+  --paper: #171426;
+  --paper-edge: #0f0d1b;
+  --ring: #5b5570;
+  --ring-hi: #8f88a8;
+
+  --scrim: rgba(4, 3, 10, .62);
+
+  --mana-b: #534a66;
+
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, .4);
+  --shadow-2: 0 24px 60px rgba(0, 0, 0, .6);
+}

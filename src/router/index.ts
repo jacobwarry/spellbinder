@@ -28,7 +28,17 @@ const routes = [
     path: '/decks/:id',
     name: 'deck-detail',
     component: DecksView
-  }
+  },
+  // Dev-only design-system gallery (excluded from production build)
+  ...(import.meta.env.DEV
+    ? [
+        {
+          path: '/styleguide',
+          name: 'styleguide',
+          component: () => import('@/views/StyleguidePage.vue')
+        }
+      ]
+    : [])
 ]
 
 const router = createRouter({
