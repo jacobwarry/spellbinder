@@ -6,6 +6,7 @@ This folder is the **source of truth** for Spellbinder's visual and interaction 
 
 - **[MASTER.md](MASTER.md)** — global source of truth: brand, tokens (color/type/space/radius/elevation/motion/z-index/breakpoints), component specs, interaction patterns, accessibility standards, and the Tailwind/shadcn-vue mapping.
 - **[SCREENS.md](SCREENS.md)** — screen inventory & triage: which screens get a `pages/*.md` override and which inherit MASTER. Read this to know whether a page file should exist.
+- **[MIGRATION.md](MIGRATION.md)** — the phased, PR-by-PR migration plan: principles, library/framework spec, viewport behavior, 13 phases (P0–P12), and the list of unplanned/needs-info items.
 - **pages/** — per-screen overrides. A page file only documents where it **deviates from or extends** MASTER. If a page has no file here, MASTER applies in full.
   - **[pages/binder-view.md](pages/binder-view.md)** — the binder viewer (signature screen): responsive spread, navigation, overview, card action sheet.
   - **[pages/collection.md](pages/collection.md)** — Home `/`: first-run state + quick/advanced search + results.
