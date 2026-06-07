@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Spellbinder · Grimoire</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============ DIRECTION A — "GRIMOIRE" ============
+   Warm editorial fantasy. Aged parchment + ink in light, candlelit
+   leather in dark. Gilded gold accent. Serif-forward, library/collector feel. */
+:root {
+  /* type */
+  --font-display: 'Cinzel', serif;
+  --font-title: 'Spectral', Georgia, serif;
+  --font-ui: 'Inter', system-ui, sans-serif;
+  /* radius / shadow / spacing */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 16px;
+  --sp: 8px;
+  --shadow-1: 0 1px 2px rgba(60,40,20,.08), 0 2px 8px rgba(60,40,20,.06);
+  --shadow-2: 0 8px 30px rgba(60,40,20,.14);
+}
+/* ---- LIGHT (parchment) ---- */
+html[data-theme="light"] {
+  --bg: #f4ecdc;
+  --bg-grain: #efe4cf;
+  --surface: #fbf6ec;
+  --surface-2: #f3e9d6;
+  --ink: #2a2118;
+  --ink-soft: #6a5a45;
+  --ink-faint: #9a8868;
+  --line: #e0d2b6;
+  --line-strong: #cdb98f;
+  --gold: #9a6e2e;
+  --gold-bright: #c08a36;
+  --accent-glow: rgba(192,138,54,.18);
+  --owned: #4f7a3a;
+  --skipped: #b04a3a;
+  --missing: #9a8868;
+}
+/* ---- DARK (candlelit leather) ---- */
+html[data-theme="dark"] {
+  --bg: #14110d;
+  --bg-grain: #1a1610;
+  --surface: #211b14;
+  --surface-2: #2a2218;
+  --ink: #f0e6d2;
+  --ink-soft: #c3b29c;
+  --ink-faint: #8a7a60;
+  --line: #34291c;
+  --line-strong: #4a3a26;
+  --gold: #d8b266;
+  --gold-bright: #f0cd83;
+  --accent-glow: rgba(216,178,102,.16);
+  --owned: #8bc070;
+  --skipped: #e08a78;
+  --missing: #8a7a60;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 600px at 80% -10%, var(--accent-glow), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+/* faint paper/leather grain */
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  opacity: .5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+}
+.app { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
+
+/* ---------- HEADER ---------- */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 0; margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.sigil {
+  width: 40px; height: 40px; display: grid; place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 25%, var(--gold-bright), var(--gold));
+  box-shadow: 0 0 0 1px var(--line-strong), inset 0 0 8px rgba(0,0,0,.25), 0 0 16px var(--accent-glow);
+}
+.sigil svg { width: 22px; height: 22px; }
+.wordmark {
+  font-family: var(--font-display); font-weight: 700; font-size: 22px;
+  letter-spacing: .12em; color: var(--ink);
+}
+.wordmark .b { color: var(--gold); }
+nav { display: flex; align-items: center; gap: 6px; }
+.navlink {
+  font-family: var(--font-title); font-size: 15px; color: var(--ink-soft);
+  text-decoration: none; padding: 8px 14px; border-radius: var(--r-sm);
+  transition: color .18s, background .18s;
+}
+.navlink:hover { color: var(--ink); background: var(--surface-2); }
+.navlink.active { color: var(--gold); background: var(--accent-glow); }
+.icon-btn {
+  width: 40px; height: 40px; border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink-soft); cursor: pointer; display: grid; place-items: center;
+  transition: all .18s; margin-left: 8px;
+}
+.icon-btn:hover { color: var(--gold); border-color: var(--line-strong); }
+.icon-btn svg { width: 18px; height: 18px; }
+
+/* ---------- PAGE TITLE ---------- */
+.page-head { margin: 36px 0 22px; }
+.eyebrow {
+  font-family: var(--font-ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--gold);
+  display: flex; align-items: center; gap: 10px;
+}
+.eyebrow::before, .eyebrow::after { content: ""; height: 1px; width: 26px; background: var(--line-strong); }
+.eyebrow::after { flex: 1; }
+.page-title {
+  font-family: var(--font-display); font-weight: 600; font-size: 36px;
+  margin: 12px 0 6px; color: var(--ink);
+}
+.page-sub { font-family: var(--font-title); font-size: 17px; color: var(--ink-soft); max-width: 620px; }
+
+/* ---------- SEARCH PANEL ---------- */
+.panel {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-1);
+  padding: 20px;
+}
+.search-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.search-box {
+  flex: 1; min-width: 240px; display: flex; align-items: center; gap: 10px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: 11px 14px;
+}
+.search-box:focus-within { border-color: var(--gold); box-shadow: 0 0 0 3px var(--accent-glow); }
+.search-box svg { width: 18px; height: 18px; color: var(--ink-faint); flex-shrink: 0; }
+.search-box input {
+  border: 0; background: transparent; outline: 0; flex: 1;
+  font-family: var(--font-ui); font-size: 15px; color: var(--ink);
+}
+.search-box input::placeholder { color: var(--ink-faint); }
+.mana-filters { display: flex; gap: 6px; }
+.mana {
+  width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+  display: grid; place-items: center; font-weight: 700; font-size: 13px;
+  border: 2px solid transparent; transition: transform .12s, box-shadow .15s;
+  font-family: var(--font-ui);
+}
+.mana:hover { transform: translateY(-2px); }
+.mana.sel { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--gold); }
+.mana.w { background: #f7f1e1; color: #7a6a45; border-color:#e6d9b8; }
+.mana.u { background: #2a6aa8; color: #eaf3fb; }
+.mana.b { background: #2a2018; color: #d8c7a8; border-color:#4a3a26; }
+.mana.r { background: #b23a2e; color: #fbe9e5; }
+.mana.g { background: #3f7a3a; color: #eaf6e6; }
+.mana.c { background: #b9a984; color: #2a2118; }
+.btn {
+  font-family: var(--font-ui); font-weight: 600; font-size: 14px;
+  padding: 11px 20px; border-radius: var(--r-md); cursor: pointer; border: 1px solid transparent;
+  transition: all .18s; white-space: nowrap;
+}
+.btn-primary {
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  color: #fff8ec; border-color: var(--gold);
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+.btn-primary:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.btn-ghost { background: transparent; color: var(--ink-soft); border-color: var(--line-strong); }
+.btn-ghost:hover { color: var(--ink); background: var(--surface-2); }
+
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.tab {
+  font-family: var(--font-title); font-size: 15px; padding: 10px 16px; cursor: pointer;
+  color: var(--ink-soft); border-bottom: 2px solid transparent; margin-bottom: -1px;
+  background: none; border-top: 0; border-left: 0; border-right: 0;
+}
+.tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+/* ---------- STAT STRIP ---------- */
+.stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin: 28px 0; }
+.stat {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: 16px 18px; box-shadow: var(--shadow-1);
+}
+.stat .k { font-family: var(--font-ui); font-size: 12px; letter-spacing:.08em; text-transform: uppercase; color: var(--ink-faint); }
+.stat .v { font-family: var(--font-display); font-size: 28px; color: var(--ink); margin-top: 4px; }
+.stat .v small { font-size: 15px; color: var(--ink-soft); font-family: var(--font-title); }
+
+/* ---------- SECTION LABEL ---------- */
+.section-label {
+  font-family: var(--font-display); font-size: 20px; color: var(--ink);
+  margin: 36px 0 16px; display: flex; align-items: baseline; gap: 12px;
+}
+.section-label .count { font-family: var(--font-ui); font-size: 13px; color: var(--ink-faint); font-weight: 500; }
+
+/* ---------- CARD GRID ---------- */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 18px; }
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  overflow: hidden; box-shadow: var(--shadow-1); transition: transform .18s, box-shadow .18s;
+}
+.card:hover { transform: translateY(-4px); box-shadow: var(--shadow-2); }
+.card-art {
+  aspect-ratio: 63/88; position: relative; display: grid; place-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.card-art .name {
+  position: absolute; left: 10px; right: 10px; top: 10px;
+  font-family: var(--font-title); font-weight: 600; font-size: 13px; color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,.6); line-height: 1.2;
+}
+.card-art .gem {
+  width: 54px; height: 54px; border-radius: 50%;
+  background: rgba(255,255,255,.12); backdrop-filter: blur(2px);
+  display: grid; place-items: center; border: 1px solid rgba(255,255,255,.25);
+}
+.card-art .type {
+  position: absolute; left: 10px; bottom: 10px;
+  font-family: var(--font-ui); font-size: 11px; color: rgba(255,255,255,.85);
+  text-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+.card.miss .card-art { filter: grayscale(.7) brightness(.85); }
+.card-body { padding: 11px 12px 13px; }
+.card-meta { font-family: var(--font-ui); font-size: 11px; color: var(--ink-faint); letter-spacing:.04em; }
+.card-loc {
+  font-family: 'Inter', monospace; font-size: 12px; color: var(--gold);
+  margin-top: 6px; display: flex; align-items: center; gap: 6px;
+}
+.card-loc svg { width: 13px; height: 13px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 9px;
+  font-family: var(--font-ui); font-size: 11px; font-weight: 600;
+  padding: 3px 9px; border-radius: 100px; border: 1px solid;
+}
+.badge.owned { color: var(--owned); border-color: color-mix(in srgb, var(--owned) 40%, transparent); background: color-mix(in srgb, var(--owned) 10%, transparent); }
+.badge.miss { color: var(--missing); border-color: var(--line-strong); background: var(--surface-2); }
+.badge.skip { color: var(--skipped); border-color: color-mix(in srgb, var(--skipped) 40%, transparent); background: color-mix(in srgb, var(--skipped) 10%, transparent); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* art gradients per color identity */
+.art-r { background: radial-gradient(circle at 50% 35%, #d8745e, #8f2f24); }
+.art-u { background: radial-gradient(circle at 50% 35%, #5b9bd1, #1f4f80); }
+.art-g { background: radial-gradient(circle at 50% 35%, #6fae5e, #2f6b34); }
+.art-b { background: radial-gradient(circle at 50% 35%, #5a4a5e, #1c1420); }
+.art-w { background: radial-gradient(circle at 50% 35%, #f3e9cf, #c9b487); }
+.art-c { background: radial-gradient(circle at 50% 35%, #b9a984, #6f6450); }
+
+/* ---------- BINDER PREVIEW ---------- */
+.binder-wrap { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
+@media (max-width: 820px){ .binder-wrap { grid-template-columns: 1fr; } .stats{grid-template-columns:repeat(2,1fr);} }
+.binder-page {
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-lg);
+  padding: 22px; box-shadow: var(--shadow-2);
+  background-image: linear-gradient(var(--surface), var(--surface));
+}
+.binder-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+.slot {
+  aspect-ratio: 63/88; border-radius: 8px; position: relative;
+  border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden;
+}
+.slot.empty {
+  background: repeating-linear-gradient(45deg, var(--surface-2), var(--surface-2) 8px, transparent 8px, transparent 16px);
+  border: 1px dashed var(--line-strong);
+}
+.slot .sname {
+  position: absolute; left: 6px; right: 6px; top: 6px;
+  font-family: var(--font-title); font-size: 10px; font-weight: 600; color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.6); line-height: 1.15;
+}
+.slot .snum {
+  position: absolute; bottom: 5px; right: 7px; font-family: var(--font-ui);
+  font-size: 9px; color: rgba(255,255,255,.8); font-weight: 600;
+}
+.slot.empty .snum { color: var(--ink-faint); text-shadow: none; }
+.binder-side .panel { padding: 18px; }
+.binder-side h3 { font-family: var(--font-display); font-size: 17px; margin: 0 0 4px; }
+.binder-side .meta { font-family: var(--font-title); color: var(--ink-soft); font-size: 14px; margin: 0 0 16px; }
+.prog { height: 8px; border-radius: 100px; background: var(--surface-2); overflow: hidden; margin: 6px 0 4px; }
+.prog > i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-bright)); width: 72%; }
+.legend { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-soft); }
+.legend div { display: flex; align-items: center; gap: 9px; }
+.swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--line-strong); }
+
+footer { text-align: center; margin-top: 60px; color: var(--ink-faint); font-family: var(--font-title); font-size: 14px; }
+.tag { position: fixed; top: 14px; left: 14px; z-index: 5; font-family: var(--font-ui); font-size: 11px; font-weight: 600; letter-spacing:.1em; text-transform: uppercase; color: var(--gold); background: var(--surface); border: 1px solid var(--line); padding: 6px 12px; border-radius: 100px; }
+</style>
+</head>
+<body>
+<div class="tag">Direction A · Grimoire</div>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="sigil">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#2a1c0a" stroke-width="1.6"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H19a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H6.5A2.5 2.5 0 0 1 4 16.5V5.5Z"/><path d="M4 16.5A2.5 2.5 0 0 1 6.5 14H20"/><path d="M12 8l1.2 2.4L16 11l-2 1.8.5 2.7L12 14.2 9.5 15.5 10 12.8 8 11l2.8-.6L12 8Z" fill="#2a1c0a" stroke="none"/></svg>
+      </div>
+      <span class="wordmark"><span class="b">S</span>PELLBINDER</span>
+    </div>
+    <nav>
+      <a class="navlink active" href="#">Collection</a>
+      <a class="navlink" href="#">My Sets</a>
+      <a class="navlink" href="#">My Decks</a>
+      <button class="icon-btn" onclick="toggleTheme()" title="Toggle theme" id="tbtn">
+        <svg id="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <div class="page-head">
+    <div class="eyebrow">The Archive</div>
+    <h1 class="page-title">Search Your Collection</h1>
+    <p class="page-sub">Every card you own, accounted for. Find any card and know exactly which binder, page, and slot holds it.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Cards Tracked</div><div class="v">3,418</div></div>
+    <div class="stat"><div class="k">Owned</div><div class="v">2,691 <small>/ 78%</small></div></div>
+    <div class="stat"><div class="k">Binders</div><div class="v">7</div></div>
+    <div class="stat"><div class="k">Decks Linked</div><div class="v">12</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="tabs">
+      <button class="tab active">Quick Search</button>
+      <button class="tab">Advanced Search</button>
+    </div>
+    <div class="search-row">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input placeholder="Search by card name…" value="" />
+      </div>
+      <div class="mana-filters">
+        <div class="mana w sel">W</div><div class="mana u">U</div><div class="mana b">B</div>
+        <div class="mana r sel">R</div><div class="mana g">G</div><div class="mana c">C</div>
+      </div>
+      <button class="btn btn-primary">Search</button>
+    </div>
+  </div>
+
+  <div class="section-label">Results <span class="count">8 of 8 · sorted by set</span></div>
+  <div class="grid">
+    <!-- card -->
+    <div class="card">
+      <div class="card-art art-r"><div class="name">Lightning Bolt</div><div class="gem"><svg viewBox="0 0 24 24" width="26" fill="#fff"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg></div><div class="type">Instant</div></div>
+      <div class="card-body">
+        <div class="card-meta">LEA · 161 · Common</div>
+        <div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H20v15H6.5A2.5 2.5 0 0 1 4 16.5Z"/></svg>Binder A · P3 · S2</div>
+        <span class="badge owned"><span class="dot"></span>Owned</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-art art-c"><div class="name">Sol Ring</div><div class="gem"><svg viewBox="0 0 24 24" width="24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2.4" fill="#fff"/></svg></div><div class="type">Artifact</div></div>
+      <div class="card-body">
+        <div class="card-meta">C21 · 044 · Uncommon</div>
+        <div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="16" height="14" rx="1.5"/></svg>Box · Artifacts</div>
+        <span class="badge owned"><span class="dot"></span>Owned</span>
+      </div>
+    </div>
+    <div class="card miss">
+      <div class="card-art art-u"><div class="name">Counterspell</div><div class="gem"><svg viewBox="0 0 24 24" width="24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/></svg></div><div class="type">Instant</div></div>
+      <div class="card-body">
+        <div class="card-meta">MH2 · 267 · Common</div>
+        <span class="badge miss"><span class="dot"></span>Missing</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-art art-g"><div class="name">Birds of Paradise</div><div class="gem"><svg viewBox="0 0 24 24" width="26" fill="#fff"><path d="M12 2c3 4 6 5 9 5-2 4-6 6-9 6S5 11 3 7c3 0 6-1 9-5z"/></svg></div><div class="type">Creature</div></div>
+      <div class="card-body">
+        <div class="card-meta">RVR · 165 · Rare</div>
+        <div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H20v15H6.5A2.5 2.5 0 0 1 4 16.5Z"/></svg>Binder A · P1 · S5</div>
+        <span class="badge owned"><span class="dot"></span>Owned</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-art art-w"><div class="name" style="color:#5a4a2c;text-shadow:none">Swords to Plowshares</div><div class="gem" style="border-color:rgba(90,74,44,.3)"><svg viewBox="0 0 24 24" width="24" fill="none" stroke="#5a4a2c" stroke-width="2"><path d="M14 5l5 5-9 9H5v-5z"/><path d="M11 8l5 5"/></svg></div><div class="type" style="color:rgba(90,74,44,.85)">Instant</div></div>
+      <div class="card-body">
+        <div class="card-meta">STA · 011 · Uncommon</div>
+        <span class="badge skip"><span class="dot"></span>Skipped</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-art art-b"><div class="name">Dark Ritual</div><div class="gem"><svg viewBox="0 0 24 24" width="24" fill="#fff"><circle cx="12" cy="12" r="7"/></svg></div><div class="type">Instant</div></div>
+      <div class="card-body">
+        <div class="card-meta">LEB · 119 · Common</div>
+        <div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H20v15H6.5A2.5 2.5 0 0 1 4 16.5Z"/></svg>Binder B · P2 · S1</div>
+        <span class="badge owned"><span class="dot"></span>Owned</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">Binder Layout <span class="count">Binder A · Page 3 · 3×3</span></div>
+  <div class="binder-wrap">
+    <div class="binder-page">
+      <div class="binder-grid">
+        <div class="slot art-w"><div class="sname" style="color:#5a4a2c;text-shadow:none">Wrath of God</div><div class="snum" style="color:#5a4a2c">1</div></div>
+        <div class="slot art-r"><div class="sname">Lightning Bolt</div><div class="snum">2</div></div>
+        <div class="slot empty"><div class="snum">3</div></div>
+        <div class="slot art-u"><div class="sname">Brainstorm</div><div class="snum">4</div></div>
+        <div class="slot art-g"><div class="sname">Llanowar Elves</div><div class="snum">5</div></div>
+        <div class="slot art-b"><div class="sname">Demonic Tutor</div><div class="snum">6</div></div>
+        <div class="slot art-c"><div class="sname">Sol Ring</div><div class="snum">7</div></div>
+        <div class="slot empty"><div class="snum">8</div></div>
+        <div class="slot art-r"><div class="sname">Fireball</div><div class="snum">9</div></div>
+      </div>
+    </div>
+    <div class="binder-side">
+      <div class="panel">
+        <h3>Binder A — Mythics</h3>
+        <p class="meta">12-page · 3×3 · 108 slots</p>
+        <div style="font-family:var(--font-ui);font-size:13px;color:var(--ink-soft);display:flex;justify-content:space-between"><span>Filled</span><span>78 / 108</span></div>
+        <div class="prog"><i></i></div>
+        <div class="legend">
+          <div><span class="swatch" style="background:linear-gradient(135deg,#d8745e,#8f2f24)"></span>Placed card</div>
+          <div><span class="swatch empty" style="background:repeating-linear-gradient(45deg,var(--surface-2),var(--surface-2) 4px,transparent 4px,transparent 8px)"></span>Empty / reserved slot</div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:18px">Edit Layout</button>
+        <button class="btn btn-ghost" style="width:100%;margin-top:8px">Add Spacer</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>Spellbinder · Grimoire concept — warm parchment & gilded ink · light + dark</footer>
+</div>
+<script>
+function toggleTheme(){
+  const h=document.documentElement;
+  const d=h.getAttribute('data-theme')==='dark';
+  h.setAttribute('data-theme', d?'light':'dark');
+  document.getElementById('ticon').innerHTML = d
+    ? '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>'
+    : '<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/>';
+}
+</script>
+</body>
+</html>

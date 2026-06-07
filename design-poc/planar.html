@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Spellbinder · Planar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============ DIRECTION C — "PLANAR" (refined) ============
+   Dark-first techno-fantasy. Obsidian/indigo canvas, ONE solid arcane-violet
+   accent doing the everyday work. The five-color mana spectrum is rationed:
+   it only appears where it literally represents the five colors of Magic —
+   the logo anchor, a single hero hairline, and the "by color identity" data bar.
+   Never on buttons, never as ambient decoration. */
+:root {
+  --font-display: 'Sora', system-ui, sans-serif;
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-pill: 100px;
+  /* SIGNATURE — used only for data that IS the five colors */
+  --spectrum: linear-gradient(100deg,#e9d49a 0%,#4aa3e8 27%,#6b5f7e 50%,#ef5a44 73%,#4fc172 100%);
+  /* brand accent gradient — two-tone, controlled (progress only) */
+  --accent-grad: linear-gradient(135deg,#8a6bff,#56c2ff);
+  /* the actual mana colors, as data tokens */
+  --mana-w:#e9d49a; --mana-u:#4aa3e8; --mana-b:#534a66; --mana-r:#ef5a44; --mana-g:#4fc172; --mana-c:#b7b1c8;
+}
+html[data-theme="dark"] {
+  --bg: #08070e;
+  --bg-2: #0e0c1a;
+  --surface: #14121f;
+  --surface-2: #1c1930;
+  --ink: #f2f0fb;
+  --ink-soft: #a7a2c6;
+  --ink-faint: #6f6a90;
+  --line: #241f3a;
+  --line-strong: #352e54;
+  --accent: #9a7dff;
+  --accent-2: #6fccff;
+  --accent-soft: rgba(154,125,255,.14);
+  --accent-glow: rgba(154,125,255,.30);
+  --owned: #4fdd8f;
+  --owned-soft: rgba(79,221,143,.12);
+  --skipped: #ff7766;
+  --skipped-soft: rgba(255,119,102,.12);
+  --missing: #6f6a90;
+  --shadow-1: 0 2px 8px rgba(0,0,0,.4);
+  --shadow-2: 0 20px 60px rgba(0,0,0,.6);
+}
+html[data-theme="light"] {
+  --bg: #f3f2fa;
+  --bg-2: #ecebf6;
+  --surface: #ffffff;
+  --surface-2: #f3f1fb;
+  --ink: #131022;
+  --ink-soft: #565078;
+  --ink-faint: #908ab0;
+  --line: #e6e3f3;
+  --line-strong: #d4cfe8;
+  --accent: #6f48ff;
+  --accent-2: #1f93e6;
+  --accent-soft: rgba(111,72,255,.10);
+  --accent-glow: rgba(111,72,255,.16);
+  --owned: #11a45f;
+  --owned-soft: rgba(17,164,95,.1);
+  --skipped: #e24a32;
+  --skipped-soft: rgba(226,74,50,.1);
+  --missing: #908ab0;
+  --shadow-1: 0 1px 3px rgba(30,20,80,.06), 0 6px 20px rgba(30,20,80,.07);
+  --shadow-2: 0 18px 50px rgba(80,50,200,.16);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: var(--font-ui); color: var(--ink); line-height: 1.5;
+  background:
+    radial-gradient(640px 360px at 8% -6%, var(--accent-glow), transparent 58%),
+    var(--bg);
+  background-attachment: fixed; -webkit-font-smoothing: antialiased;
+}
+.app { max-width: 1220px; margin: 0 auto; padding: 0 24px 80px; }
+
+/* HEADER */
+header { display:flex; align-items:center; justify-content:space-between; height:70px; position:sticky; top:0; z-index:20;
+  background: color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--line); margin: 0 -24px; padding: 0 24px; }
+.brand { display:flex; align-items:center; gap:12px; }
+/* logo anchor — the spectrum lives here as a hairline frame, identity only */
+.mark { width:38px; height:38px; border-radius:11px; display:grid; place-items:center; position:relative; background:var(--spectrum); box-shadow: 0 0 18px var(--accent-glow); }
+.mark::after { content:""; position:absolute; inset:1.5px; border-radius:9px; background:var(--surface); }
+.mark svg { position:relative; z-index:1; width:20px; height:20px; }
+.wordmark { font-family: var(--font-display); font-weight:800; font-size:19px; letter-spacing:-.01em; }
+nav { display:flex; align-items:center; gap:4px; }
+.navlink { font-size:14px; font-weight:600; color:var(--ink-soft); text-decoration:none; padding:9px 15px; border-radius:var(--r-sm); transition:all .16s; }
+.navlink:hover { color:var(--ink); background:var(--surface-2); }
+.navlink.active { color:var(--ink); background:var(--surface-2); position:relative; }
+.navlink.active::after { content:""; position:absolute; left:15px; right:15px; bottom:3px; height:2px; border-radius:2px; background:var(--accent); }
+.icon-btn { width:40px; height:40px; border-radius:var(--r-sm); border:1px solid var(--line); background:var(--surface); color:var(--ink-soft); cursor:pointer; display:grid; place-items:center; transition:all .16s; margin-left:6px; }
+.icon-btn:hover { color:var(--accent); border-color:var(--line-strong); }
+.icon-btn svg { width:18px; height:18px; }
+
+/* HERO */
+.hero { padding:58px 0 38px; max-width:760px; }
+.eyebrow { display:inline-flex; align-items:center; gap:9px; font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:20px; }
+.eyebrow svg { width:15px; height:15px; color:var(--accent); }
+h1 { font-family:var(--font-display); font-weight:800; font-size:50px; line-height:1.05; letter-spacing:-.025em; margin:0 0 16px; }
+/* the ONE hero flourish: a short spectrum rule, not gradient text */
+.hero-rule { width:88px; height:4px; border-radius:100px; background:var(--spectrum); margin:0 0 22px; box-shadow:0 0 14px var(--accent-glow); }
+.lede { font-size:18px; color:var(--ink-soft); margin:0; max-width:560px; }
+
+/* STATS */
+.stats { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin:6px 0 16px; }
+@media(max-width:760px){ .stats{grid-template-columns:repeat(2,1fr)} .binder-wrap{grid-template-columns:1fr!important} }
+.stat { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:18px 20px; box-shadow:var(--shadow-1); transition:border-color .16s, transform .16s; }
+.stat:hover { border-color:var(--line-strong); transform:translateY(-2px); }
+.stat .top { display:flex; align-items:center; gap:9px; color:var(--ink-faint); }
+.stat .top svg { width:16px; height:16px; }
+.stat .k { font-size:13px; font-weight:500; }
+.stat .v { font-family:var(--font-display); font-size:30px; font-weight:700; margin-top:8px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.stat .v small { font-size:14px; color:var(--owned); font-weight:600; font-family:var(--font-ui); }
+
+/* EARNED SPECTRUM — collection by color identity (the spectrum IS the data) */
+.colorbar-panel { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:16px 20px; box-shadow:var(--shadow-1); margin-bottom:40px; }
+.colorbar-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.colorbar-head h3 { font-size:13px; font-weight:600; color:var(--ink-soft); margin:0; letter-spacing:.02em; }
+.colorbar-head span { font-size:12px; color:var(--ink-faint); font-variant-numeric:tabular-nums; }
+.colorbar { display:flex; height:12px; border-radius:100px; overflow:hidden; gap:2px; background:var(--surface-2); }
+.colorbar > i { display:block; height:100%; }
+.colorbar > i:first-child{ border-radius:100px 0 0 100px; } .colorbar > i:last-child{ border-radius:0 100px 100px 0; }
+.colorbar-legend { display:flex; flex-wrap:wrap; gap:16px; margin-top:12px; }
+.cl { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+.cl .sw { width:11px; height:11px; border-radius:3px; }
+
+/* SEARCH */
+.panel { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow-1); padding:8px; }
+.seg { display:inline-flex; background:var(--surface-2); border-radius:var(--r-pill); padding:4px; margin:12px; gap:2px; }
+.seg button { border:0; background:transparent; font-family:var(--font-ui); font-size:13px; font-weight:600; color:var(--ink-soft); padding:7px 16px; border-radius:var(--r-pill); cursor:pointer; transition:all .16s; }
+.seg button.active { background:var(--surface); color:var(--ink); box-shadow:var(--shadow-1); }
+.search-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:0 12px 12px; }
+.search-box { flex:1; min-width:220px; display:flex; align-items:center; gap:10px; background:var(--surface-2); border:1px solid transparent; border-radius:var(--r-md); padding:12px 14px; transition:all .16s; }
+.search-box:focus-within { border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-glow); }
+.search-box svg { width:18px; height:18px; color:var(--ink-faint); }
+.search-box input { border:0; background:transparent; outline:0; flex:1; font-family:var(--font-ui); font-size:15px; color:var(--ink); }
+.search-box input::placeholder { color:var(--ink-faint); }
+.mana-filters { display:flex; gap:6px; }
+.mana { width:32px; height:32px; border-radius:50%; cursor:pointer; display:grid; place-items:center; font-weight:700; font-size:12px; transition:transform .12s, box-shadow .14s; }
+.mana:hover { transform:translateY(-2px); }
+.mana.sel { box-shadow:0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.mana.w{background:var(--mana-w);color:#6f6033} .mana.u{background:var(--mana-u);color:#fff} .mana.b{background:#3a3450;color:#cfc6e0} .mana.r{background:var(--mana-r);color:#fff} .mana.g{background:var(--mana-g);color:#05210f} .mana.c{background:var(--mana-c);color:#26223a}
+.btn { font-family:var(--font-ui); font-weight:700; font-size:14px; padding:12px 22px; border-radius:var(--r-md); border:0; cursor:pointer; transition:all .16s; }
+/* PRIMARY = solid accent. No spectrum. */
+.btn-primary { color:#fff; background:var(--accent); box-shadow:0 6px 18px var(--accent-glow); }
+.btn-primary:hover { transform:translateY(-1px); filter:brightness(1.08); }
+.btn-ghost { background:var(--surface-2); color:var(--ink); border:1px solid var(--line-strong); }
+.btn-ghost:hover { border-color:var(--accent); }
+
+/* SECTION */
+.section-head { display:flex; align-items:baseline; justify-content:space-between; margin:44px 0 18px; }
+.section-head h2 { font-family:var(--font-display); font-weight:700; font-size:24px; margin:0; letter-spacing:-.01em; }
+.section-head .count { font-size:13px; color:var(--ink-faint); }
+
+/* CARDS */
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(176px,1fr)); gap:18px; }
+.card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); overflow:hidden; box-shadow:var(--shadow-1); transition:transform .18s, box-shadow .18s, border-color .18s; }
+.card:hover { transform:translateY(-5px); box-shadow:var(--shadow-2); border-color:var(--line-strong); }
+.card-art { aspect-ratio:63/88; position:relative; display:grid; place-items:center; }
+.card-art::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.35)); }
+.card-art .name { position:absolute; left:11px; right:11px; top:11px; z-index:1; font-weight:700; font-size:13px; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.6); line-height:1.2; }
+.card-art .gem { width:48px; height:48px; border-radius:14px; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.3); display:grid; place-items:center; backdrop-filter:blur(2px); z-index:1; }
+.card-art .type { position:absolute; left:11px; bottom:11px; z-index:1; font-size:11px; color:rgba(255,255,255,.9); font-weight:500; }
+.card.miss .card-art { filter:grayscale(.7) brightness(.85); }
+.card-body { padding:12px 13px 14px; }
+.card-meta { font-size:11px; color:var(--ink-faint); font-weight:500; letter-spacing:.02em; font-variant-numeric:tabular-nums; }
+.card-loc { font-size:12px; color:var(--accent-2); margin-top:7px; display:flex; align-items:center; gap:6px; font-variant-numeric:tabular-nums; }
+.card-loc svg { width:13px; height:13px; }
+.badge { display:inline-flex; align-items:center; gap:5px; margin-top:10px; font-size:11px; font-weight:700; padding:4px 10px; border-radius:var(--r-pill); }
+.badge.owned { color:var(--owned); background:var(--owned-soft); }
+.badge.miss { color:var(--missing); background:var(--surface-2); }
+.badge.skip { color:var(--skipped); background:var(--skipped-soft); }
+.dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+.art-r{background:radial-gradient(circle at 50% 28%,#ff6a52,#a32417)} .art-u{background:radial-gradient(circle at 50% 28%,#54b0f0,#1c5996)} .art-g{background:radial-gradient(circle at 50% 28%,#54cf80,#1f7a40)} .art-b{background:radial-gradient(circle at 50% 28%,#5b5170,#1a1426)} .art-w{background:radial-gradient(circle at 50% 28%,#f6ecc4,#cdb478)} .art-c{background:radial-gradient(circle at 50% 28%,#c3bdd2,#797295)}
+
+/* BINDER */
+.binder-wrap { display:grid; grid-template-columns:1fr 300px; gap:24px; align-items:start; }
+.binder-page { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:22px; box-shadow:var(--shadow-1); position:relative; }
+.binder-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.slot { aspect-ratio:63/88; border-radius:10px; position:relative; overflow:hidden; }
+.slot.empty { background:var(--surface-2); border:1.5px dashed var(--line-strong); }
+.slot .sname { position:absolute; left:7px; right:7px; top:7px; font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.6); line-height:1.15; z-index:1; }
+.slot .snum { position:absolute; bottom:6px; right:8px; font-size:9px; font-weight:700; color:rgba(255,255,255,.85); z-index:1; }
+.slot.empty .snum { color:var(--ink-faint); }
+.binder-side .panel { padding:20px; }
+.binder-side h3 { font-family:var(--font-display); font-size:18px; margin:0 0 3px; }
+.binder-side .meta { font-size:13px; color:var(--ink-soft); margin:0 0 18px; }
+.kv { display:flex; justify-content:space-between; font-size:13px; color:var(--ink-soft); margin-bottom:6px; }
+.kv b { color:var(--ink); font-variant-numeric:tabular-nums; }
+.prog { height:8px; border-radius:var(--r-pill); background:var(--surface-2); overflow:hidden; margin:4px 0 16px; }
+.prog > i { display:block; height:100%; width:72%; background:var(--accent-grad); }
+.legend { display:flex; flex-direction:column; gap:9px; font-size:13px; color:var(--ink-soft); }
+.legend div { display:flex; align-items:center; gap:9px; }
+.swatch { width:14px; height:14px; border-radius:5px; }
+footer { text-align:center; margin-top:64px; color:var(--ink-faint); font-size:14px; }
+.tag { position:fixed; top:14px; left:14px; z-index:40; font-size:11px; font-weight:700; letter-spacing:.06em; color:var(--ink); background:var(--surface); border:1px solid var(--line); padding:6px 12px; border-radius:var(--r-pill); }
+.tag::before { content:""; display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent); margin-right:7px; vertical-align:middle; }
+</style>
+</head>
+<body>
+<div class="tag">Direction C · Planar (refined)</div>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="url(#g)" stroke-width="1.8"><defs><linearGradient id="g" x1="0" y1="0" x2="24" y2="24"><stop offset="0" stop-color="#9a7dff"/><stop offset="1" stop-color="#6fccff"/></linearGradient></defs><path d="M5 5.2C5 4.5 5.5 4 6.2 4H19v15.5H7A2 2 0 0 1 5 17.5Z"/><path d="M5 17.5A2 2 0 0 1 7 15.5h12"/></svg>
+      </div>
+      <span class="wordmark">Spellbinder</span>
+    </div>
+    <nav>
+      <a class="navlink active" href="#">Collection</a>
+      <a class="navlink" href="#">My Sets</a>
+      <a class="navlink" href="#">My Decks</a>
+      <button class="icon-btn" onclick="toggleTheme()" id="tbtn" title="Toggle theme">
+        <svg id="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 3.6L17 7l-3.4 1.4L12 12l-1.6-3.6L7 7l3.4-1.4z"/></svg>Across every plane of your collection</span>
+    <h1>Find any card.<br>Know its exact slot.</h1>
+    <div class="hero-rule"></div>
+    <p class="lede">Spellbinder maps your entire Magic collection to real binders and boxes, so you always know where a card sits before you reach for it.</p>
+  </section>
+
+  <div class="stats">
+    <div class="stat"><div class="top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg><span class="k">Cards tracked</span></div><div class="v">3,418</div></div>
+    <div class="stat"><div class="top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg><span class="k">Owned</span></div><div class="v">2,691 <small>78%</small></div></div>
+    <div class="stat"><div class="top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5.2C5 4.5 5.5 4 6.2 4H19v16H7a2 2 0 0 1-2-2Z"/><path d="M5 18a2 2 0 0 1 2-2h12"/></svg><span class="k">Binders</span></div><div class="v">7</div></div>
+    <div class="stat"><div class="top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m4 8 8-4 8 4-8 4Z"/><path d="m4 12 8 4 8-4M4 16l8 4 8-4"/></svg><span class="k">Decks linked</span></div><div class="v">12</div></div>
+  </div>
+
+  <!-- EARNED SPECTRUM: this is the only place the five colors flow together,
+       because here they ARE the data — the color breakdown of the collection. -->
+  <div class="colorbar-panel">
+    <div class="colorbar-head"><h3>Collection by color identity</h3><span>2,691 owned cards</span></div>
+    <div class="colorbar">
+      <i style="width:14%;background:var(--mana-w)"></i>
+      <i style="width:22%;background:var(--mana-u)"></i>
+      <i style="width:19%;background:var(--mana-b)"></i>
+      <i style="width:17%;background:var(--mana-r)"></i>
+      <i style="width:18%;background:var(--mana-g)"></i>
+      <i style="width:10%;background:var(--mana-c)"></i>
+    </div>
+    <div class="colorbar-legend">
+      <span class="cl"><span class="sw" style="background:var(--mana-w)"></span>White · 377</span>
+      <span class="cl"><span class="sw" style="background:var(--mana-u)"></span>Blue · 592</span>
+      <span class="cl"><span class="sw" style="background:var(--mana-b)"></span>Black · 511</span>
+      <span class="cl"><span class="sw" style="background:var(--mana-r)"></span>Red · 458</span>
+      <span class="cl"><span class="sw" style="background:var(--mana-g)"></span>Green · 484</span>
+      <span class="cl"><span class="sw" style="background:var(--mana-c)"></span>Colorless · 269</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="seg"><button class="active">Quick Search</button><button>Advanced Search</button></div>
+    <div class="search-row">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input placeholder="Search by card name…" />
+      </div>
+      <div class="mana-filters">
+        <div class="mana w sel">W</div><div class="mana u">U</div><div class="mana b">B</div><div class="mana r sel">R</div><div class="mana g">G</div><div class="mana c">C</div>
+      </div>
+      <button class="btn btn-primary">Search</button>
+    </div>
+  </div>
+
+  <div class="section-head"><h2>Results</h2><span class="count">8 cards · sorted by set</span></div>
+  <div class="grid">
+    <div class="card">
+      <div class="card-art art-r"><div class="name">Lightning Bolt</div><div class="gem"><svg viewBox="0 0 24 24" width="24" fill="#fff"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg></div><div class="type">Instant</div></div>
+      <div class="card-body"><div class="card-meta">LEA · 161 · Common</div><div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>Binder A · P3 · S2</div><span class="badge owned"><span class="dot"></span>Owned</span></div>
+    </div>
+    <div class="card">
+      <div class="card-art art-c"><div class="name">Sol Ring</div><div class="gem"><svg viewBox="0 0 24 24" width="22" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2.2" fill="#fff"/></svg></div><div class="type">Artifact</div></div>
+      <div class="card-body"><div class="card-meta">C21 · 044 · Uncommon</div><div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg>Box · Artifacts</div><span class="badge owned"><span class="dot"></span>Owned</span></div>
+    </div>
+    <div class="card miss">
+      <div class="card-art art-u"><div class="name">Counterspell</div><div class="gem"><svg viewBox="0 0 24 24" width="22" fill="none" stroke="#fff" stroke-width="2"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/></svg></div><div class="type">Instant</div></div>
+      <div class="card-body"><div class="card-meta">MH2 · 267 · Common</div><span class="badge miss"><span class="dot"></span>Missing</span></div>
+    </div>
+    <div class="card">
+      <div class="card-art art-g"><div class="name">Birds of Paradise</div><div class="gem"><svg viewBox="0 0 24 24" width="24" fill="#fff"><path d="M12 2c3 4 6 5 9 5-2 4-6 6-9 6S5 11 3 7c3 0 6-1 9-5z"/></svg></div><div class="type">Creature</div></div>
+      <div class="card-body"><div class="card-meta">RVR · 165 · Rare</div><div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>Binder A · P1 · S5</div><span class="badge owned"><span class="dot"></span>Owned</span></div>
+    </div>
+    <div class="card">
+      <div class="card-art art-w"><div class="name" style="color:#5a4a2c;text-shadow:none">Swords to Plowshares</div><div class="gem" style="border-color:rgba(90,74,44,.25)"><svg viewBox="0 0 24 24" width="22" fill="none" stroke="#5a4a2c" stroke-width="2"><path d="M14 5l5 5-9 9H5v-5z"/></svg></div><div class="type" style="color:rgba(90,74,44,.8)">Instant</div></div>
+      <div class="card-body"><div class="card-meta">STA · 011 · Uncommon</div><span class="badge skip"><span class="dot"></span>Skipped</span></div>
+    </div>
+    <div class="card">
+      <div class="card-art art-b"><div class="name">Dark Ritual</div><div class="gem"><svg viewBox="0 0 24 24" width="22" fill="#fff"><circle cx="12" cy="12" r="7"/></svg></div><div class="type">Instant</div></div>
+      <div class="card-body"><div class="card-meta">LEB · 119 · Common</div><div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>Binder B · P2 · S1</div><span class="badge owned"><span class="dot"></span>Owned</span></div>
+    </div>
+  </div>
+
+  <div class="section-head"><h2>Binder Layout</h2><span class="count">Binder A · Page 3 · 3×3</span></div>
+  <div class="binder-wrap">
+    <div class="binder-page">
+      <div class="binder-grid">
+        <div class="slot art-w"><div class="sname" style="color:#5a4a2c;text-shadow:none">Wrath of God</div><div class="snum" style="color:#5a4a2c">1</div></div>
+        <div class="slot art-r"><div class="sname">Lightning Bolt</div><div class="snum">2</div></div>
+        <div class="slot empty"><div class="snum">3</div></div>
+        <div class="slot art-u"><div class="sname">Brainstorm</div><div class="snum">4</div></div>
+        <div class="slot art-g"><div class="sname">Llanowar Elves</div><div class="snum">5</div></div>
+        <div class="slot art-b"><div class="sname">Demonic Tutor</div><div class="snum">6</div></div>
+        <div class="slot art-c"><div class="sname">Sol Ring</div><div class="snum">7</div></div>
+        <div class="slot empty"><div class="snum">8</div></div>
+        <div class="slot art-r"><div class="sname">Fireball</div><div class="snum">9</div></div>
+      </div>
+    </div>
+    <div class="binder-side">
+      <div class="panel">
+        <h3>Binder A — Mythics</h3>
+        <p class="meta">12 pages · 3×3 · 108 slots</p>
+        <div class="kv"><span>Filled</span><b>78 / 108</b></div>
+        <div class="prog"><i></i></div>
+        <div class="legend">
+          <div><span class="swatch" style="background:radial-gradient(circle at 50% 28%,#ff6a52,#a32417)"></span>Placed card</div>
+          <div><span class="swatch" style="background:var(--surface-2);border:1.5px dashed var(--line-strong)"></span>Empty / reserved</div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:18px">Edit Layout</button>
+        <button class="btn btn-ghost" style="width:100%;margin-top:8px">Add Spacer</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>Spellbinder · Planar (refined) — dark-first, solid violet accent, spectrum rationed to data · light + dark</footer>
+</div>
+<script>
+function toggleTheme(){
+  const h=document.documentElement, d=h.getAttribute('data-theme')==='dark';
+  h.setAttribute('data-theme', d?'light':'dark');
+  document.getElementById('ticon').innerHTML = d
+    ? '<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/>'
+    : '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>';
+}
+</script>
+</body>
+</html>

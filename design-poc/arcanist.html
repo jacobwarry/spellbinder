@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Spellbinder · Arcanist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============ DIRECTION B — "ARCANIST" ============
+   Modern mystic minimal. Cool neutral canvas, a single arcane-violet accent.
+   Clean Inter UI, a refined Fraunces serif only for display. Lots of air,
+   crisp surfaces. SaaS-grade; the magic lives in the details. */
+:root {
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --r-sm: 8px; --r-md: 12px; --r-lg: 18px; --r-pill: 100px;
+}
+html[data-theme="light"] {
+  --bg: #f7f7fb;
+  --surface: #ffffff;
+  --surface-2: #f1f1f7;
+  --ink: #18171f;
+  --ink-soft: #5a5870;
+  --ink-faint: #908ea6;
+  --line: #e7e6f0;
+  --line-strong: #d6d4e4;
+  --accent: #6d4aff;
+  --accent-2: #9b6bff;
+  --accent-soft: #efe9ff;
+  --accent-glow: rgba(109,74,255,.14);
+  --owned: #1f9d57;
+  --owned-soft: #e3f6ec;
+  --skipped: #e0533c;
+  --skipped-soft: #fdeae6;
+  --missing: #908ea6;
+  --shadow-1: 0 1px 2px rgba(24,23,31,.04), 0 4px 16px rgba(24,23,31,.05);
+  --shadow-2: 0 12px 40px rgba(60,40,140,.14);
+}
+html[data-theme="dark"] {
+  --bg: #0d0c12;
+  --surface: #16151d;
+  --surface-2: #1f1d29;
+  --ink: #f3f2f8;
+  --ink-soft: #aeabc4;
+  --ink-faint: #726f88;
+  --line: #262430;
+  --line-strong: #353243;
+  --accent: #9b7bff;
+  --accent-2: #c2a3ff;
+  --accent-soft: #221d38;
+  --accent-glow: rgba(155,123,255,.18);
+  --owned: #44d188;
+  --owned-soft: #112a1d;
+  --skipped: #ff7a63;
+  --skipped-soft: #2e1612;
+  --missing: #726f88;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.3);
+  --shadow-2: 0 18px 50px rgba(0,0,0,.55);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: var(--font-ui); color: var(--ink); line-height: 1.5;
+  background:
+    radial-gradient(900px 500px at 100% -5%, var(--accent-glow), transparent 55%),
+    radial-gradient(700px 400px at -5% 10%, var(--accent-glow), transparent 50%),
+    var(--bg);
+  background-attachment: fixed; -webkit-font-smoothing: antialiased;
+}
+.app { max-width: 1200px; margin: 0 auto; padding: 0 24px 80px; }
+
+/* HEADER */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 68px; position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  backdrop-filter: blur(14px); border-bottom: 1px solid var(--line);
+  margin: 0 -24px 0; padding: 0 24px;
+}
+.brand { display: flex; align-items: center; gap: 11px; }
+.mark {
+  width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+  background: linear-gradient(140deg, var(--accent), var(--accent-2));
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+.mark svg { width: 20px; height: 20px; }
+.wordmark { font-weight: 700; font-size: 19px; letter-spacing: -.01em; }
+nav { display: flex; align-items: center; gap: 4px; }
+.navlink {
+  font-size: 14px; font-weight: 500; color: var(--ink-soft); text-decoration: none;
+  padding: 8px 14px; border-radius: var(--r-sm); transition: all .16s;
+}
+.navlink:hover { color: var(--ink); background: var(--surface-2); }
+.navlink.active { color: var(--accent); background: var(--accent-soft); }
+.icon-btn {
+  width: 38px; height: 38px; border-radius: var(--r-sm); border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink-soft); cursor: pointer; display: grid; place-items: center;
+  transition: all .16s; margin-left: 6px;
+}
+.icon-btn:hover { color: var(--accent); border-color: var(--line-strong); }
+.icon-btn svg { width: 18px; height: 18px; }
+
+/* HERO */
+.hero { padding: 56px 0 40px; max-width: 720px; }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600;
+  letter-spacing: .04em; color: var(--accent); background: var(--accent-soft);
+  padding: 6px 12px; border-radius: var(--r-pill); margin-bottom: 18px;
+}
+.eyebrow svg { width: 14px; height: 14px; }
+h1 {
+  font-family: var(--font-display); font-weight: 600; font-size: 46px; line-height: 1.08;
+  letter-spacing: -.02em; margin: 0 0 14px;
+}
+h1 em { font-style: italic; color: var(--accent); }
+.lede { font-size: 18px; color: var(--ink-soft); margin: 0; max-width: 560px; }
+
+/* STAT CARDS */
+.stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin: 8px 0 40px; }
+@media(max-width:760px){ .stats{grid-template-columns:repeat(2,1fr)} .binder-wrap{grid-template-columns:1fr!important} }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 18px 20px; box-shadow: var(--shadow-1); }
+.stat .k { font-size: 13px; color: var(--ink-faint); font-weight: 500; }
+.stat .v { font-size: 30px; font-weight: 700; margin-top: 6px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat .v small { font-size: 14px; color: var(--owned); font-weight: 600; }
+
+/* SEARCH */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-1); padding: 8px; }
+.seg { display: inline-flex; background: var(--surface-2); border-radius: var(--r-pill); padding: 4px; margin: 12px; gap: 2px; }
+.seg button { border: 0; background: transparent; font-family: var(--font-ui); font-size: 13px; font-weight: 600; color: var(--ink-soft); padding: 7px 16px; border-radius: var(--r-pill); cursor: pointer; transition: all .16s; }
+.seg button.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
+.search-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 0 12px 12px; }
+.search-box { flex: 1; min-width: 220px; display: flex; align-items: center; gap: 10px; background: var(--surface-2); border: 1px solid transparent; border-radius: var(--r-md); padding: 12px 14px; transition: all .16s; }
+.search-box:focus-within { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 4px var(--accent-glow); }
+.search-box svg { width: 18px; height: 18px; color: var(--ink-faint); }
+.search-box input { border: 0; background: transparent; outline: 0; flex: 1; font-family: var(--font-ui); font-size: 15px; color: var(--ink); }
+.search-box input::placeholder { color: var(--ink-faint); }
+.mana-filters { display: flex; gap: 6px; }
+.mana { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; font-weight: 700; font-size: 12px; transition: transform .12s, box-shadow .14s; }
+.mana:hover { transform: translateY(-2px); }
+.mana.sel { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.mana.w{background:#f4e7c9;color:#7a6a33} .mana.u{background:#2a7bd1;color:#fff} .mana.b{background:#36323e;color:#cfc6d8} .mana.r{background:#e0533c;color:#fff} .mana.g{background:#33a35e;color:#fff} .mana.c{background:#b6b0c0;color:#2a2730}
+.btn { font-family: var(--font-ui); font-weight: 600; font-size: 14px; padding: 12px 22px; border-radius: var(--r-md); border: 1px solid transparent; cursor: pointer; transition: all .16s; }
+.btn-primary { background: linear-gradient(140deg, var(--accent), var(--accent-2)); color: #fff; box-shadow: 0 4px 14px var(--accent-glow); }
+.btn-primary:hover { transform: translateY(-1px); filter: brightness(1.05); }
+.btn-ghost { background: var(--surface); color: var(--ink-soft); border-color: var(--line-strong); }
+.btn-ghost:hover { color: var(--ink); }
+
+/* SECTION */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 44px 0 18px; }
+.section-head h2 { font-family: var(--font-display); font-weight: 600; font-size: 24px; margin: 0; letter-spacing: -.01em; }
+.section-head .count { font-size: 13px; color: var(--ink-faint); }
+
+/* CARD GRID */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px,1fr)); gap: 18px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; box-shadow: var(--shadow-1); transition: transform .18s, box-shadow .18s, border-color .18s; }
+.card:hover { transform: translateY(-4px); box-shadow: var(--shadow-2); border-color: var(--line-strong); }
+.card-art { aspect-ratio: 63/88; position: relative; display: grid; place-items: center; }
+.card-art .name { position: absolute; left: 11px; right: 11px; top: 11px; font-weight: 600; font-size: 13px; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.55); line-height: 1.2; }
+.card-art .gem { width: 48px; height: 48px; border-radius: 14px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3); display: grid; place-items: center; backdrop-filter: blur(2px); }
+.card-art .type { position: absolute; left: 11px; bottom: 11px; font-size: 11px; color: rgba(255,255,255,.85); text-shadow: 0 1px 3px rgba(0,0,0,.5); font-weight: 500; }
+.card.miss .card-art { filter: grayscale(.65) brightness(.9); }
+.card-body { padding: 12px 13px 14px; }
+.card-meta { font-size: 11px; color: var(--ink-faint); font-weight: 500; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+.card-loc { font-size: 12px; color: var(--accent); margin-top: 7px; display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.card-loc svg { width: 13px; height: 13px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: var(--r-pill); }
+.badge.owned { color: var(--owned); background: var(--owned-soft); }
+.badge.miss { color: var(--missing); background: var(--surface-2); }
+.badge.skip { color: var(--skipped); background: var(--skipped-soft); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.art-r{background:radial-gradient(circle at 50% 30%,#ef7159,#b53322)} .art-u{background:radial-gradient(circle at 50% 30%,#5fa3df,#235f9a)} .art-g{background:radial-gradient(circle at 50% 30%,#5fc07f,#2a7a44)} .art-b{background:radial-gradient(circle at 50% 30%,#56495f,#221a29)} .art-w{background:radial-gradient(circle at 50% 30%,#f6efd6,#d4c08c)} .art-c{background:radial-gradient(circle at 50% 30%,#c2bccb,#7d7689)}
+
+/* BINDER */
+.binder-wrap { display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: start; }
+.binder-page { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 22px; box-shadow: var(--shadow-1); }
+.binder-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+.slot { aspect-ratio: 63/88; border-radius: 10px; position: relative; overflow: hidden; }
+.slot.empty { background: var(--surface-2); border: 1.5px dashed var(--line-strong); }
+.slot .sname { position: absolute; left: 7px; right: 7px; top: 7px; font-size: 10px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.55); line-height: 1.15; }
+.slot .snum { position: absolute; bottom: 6px; right: 8px; font-size: 9px; font-weight: 700; color: rgba(255,255,255,.85); }
+.slot.empty .snum { color: var(--ink-faint); }
+.binder-side .panel { padding: 20px; }
+.binder-side h3 { font-family: var(--font-display); font-size: 18px; margin: 0 0 3px; }
+.binder-side .meta { font-size: 13px; color: var(--ink-soft); margin: 0 0 18px; }
+.kv { display: flex; justify-content: space-between; font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; }
+.kv b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.prog { height: 8px; border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden; margin: 4px 0 16px; }
+.prog > i { display: block; height: 100%; width: 72%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.legend { display: flex; flex-direction: column; gap: 9px; font-size: 13px; color: var(--ink-soft); }
+.legend div { display: flex; align-items: center; gap: 9px; }
+.swatch { width: 14px; height: 14px; border-radius: 5px; }
+footer { text-align: center; margin-top: 64px; color: var(--ink-faint); font-size: 14px; }
+.tag { position: fixed; top: 14px; left: 14px; z-index: 30; font-size: 11px; font-weight: 600; letter-spacing:.06em; color: var(--accent); background: var(--surface); border: 1px solid var(--line); padding: 6px 12px; border-radius: var(--r-pill); }
+</style>
+</head>
+<body>
+<div class="tag">Direction B · Arcanist</div>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M5 5.2C5 4.5 5.5 4 6.2 4H19v15.5H7A2 2 0 0 1 5 17.5Z"/><path d="M5 17.5A2 2 0 0 1 7 15.5h12"/><path d="M12 8l.9 1.8 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2L9.1 10l2-.3z" fill="#fff" stroke="none"/></svg>
+      </div>
+      <span class="wordmark">Spellbinder</span>
+    </div>
+    <nav>
+      <a class="navlink active" href="#">Collection</a>
+      <a class="navlink" href="#">My Sets</a>
+      <a class="navlink" href="#">My Decks</a>
+      <button class="icon-btn" onclick="toggleTheme()" id="tbtn" title="Toggle theme">
+        <svg id="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 3.6L17 7l-3.4 1.4L12 12l-1.6-3.6L7 7l3.4-1.4z"/></svg>Your collection, perfectly placed</span>
+    <h1>Know exactly where <em>every card</em> lives.</h1>
+    <p class="lede">Search your whole collection, then jump straight to the binder, page, and slot. No more digging through boxes.</p>
+  </section>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Cards tracked</div><div class="v">3,418</div></div>
+    <div class="stat"><div class="k">Owned</div><div class="v">2,691 <small>78%</small></div></div>
+    <div class="stat"><div class="k">Binders</div><div class="v">7</div></div>
+    <div class="stat"><div class="k">Decks linked</div><div class="v">12</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="seg"><button class="active">Quick Search</button><button>Advanced Search</button></div>
+    <div class="search-row">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input placeholder="Search by card name…" />
+      </div>
+      <div class="mana-filters">
+        <div class="mana w sel">W</div><div class="mana u">U</div><div class="mana b">B</div><div class="mana r sel">R</div><div class="mana g">G</div><div class="mana c">C</div>
+      </div>
+      <button class="btn btn-primary">Search</button>
+    </div>
+  </div>
+
+  <div class="section-head"><h2>Results</h2><span class="count">8 cards · sorted by set</span></div>
+  <div class="grid">
+    <div class="card">
+      <div class="card-art art-r"><div class="name">Lightning Bolt</div><div class="gem"><svg viewBox="0 0 24 24" width="24" fill="#fff"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg></div><div class="type">Instant</div></div>
+      <div class="card-body"><div class="card-meta">LEA · 161 · Common</div><div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>Binder A · P3 · S2</div><span class="badge owned"><span class="dot"></span>Owned</span></div>
+    </div>
+    <div class="card">
+      <div class="card-art art-c"><div class="name">Sol Ring</div><div class="gem"><svg viewBox="0 0 24 24" width="22" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2.2" fill="#fff"/></svg></div><div class="type">Artifact</div></div>
+      <div class="card-body"><div class="card-meta">C21 · 044 · Uncommon</div><div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg>Box · Artifacts</div><span class="badge owned"><span class="dot"></span>Owned</span></div>
+    </div>
+    <div class="card miss">
+      <div class="card-art art-u"><div class="name">Counterspell</div><div class="gem"><svg viewBox="0 0 24 24" width="22" fill="none" stroke="#fff" stroke-width="2"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/></svg></div><div class="type">Instant</div></div>
+      <div class="card-body"><div class="card-meta">MH2 · 267 · Common</div><span class="badge miss"><span class="dot"></span>Missing</span></div>
+    </div>
+    <div class="card">
+      <div class="card-art art-g"><div class="name">Birds of Paradise</div><div class="gem"><svg viewBox="0 0 24 24" width="24" fill="#fff"><path d="M12 2c3 4 6 5 9 5-2 4-6 6-9 6S5 11 3 7c3 0 6-1 9-5z"/></svg></div><div class="type">Creature</div></div>
+      <div class="card-body"><div class="card-meta">RVR · 165 · Rare</div><div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>Binder A · P1 · S5</div><span class="badge owned"><span class="dot"></span>Owned</span></div>
+    </div>
+    <div class="card">
+      <div class="card-art art-w"><div class="name" style="color:#5a4a2c;text-shadow:none">Swords to Plowshares</div><div class="gem" style="border-color:rgba(90,74,44,.25)"><svg viewBox="0 0 24 24" width="22" fill="none" stroke="#5a4a2c" stroke-width="2"><path d="M14 5l5 5-9 9H5v-5z"/></svg></div><div class="type" style="color:rgba(90,74,44,.8)">Instant</div></div>
+      <div class="card-body"><div class="card-meta">STA · 011 · Uncommon</div><span class="badge skip"><span class="dot"></span>Skipped</span></div>
+    </div>
+    <div class="card">
+      <div class="card-art art-b"><div class="name">Dark Ritual</div><div class="gem"><svg viewBox="0 0 24 24" width="22" fill="#fff"><circle cx="12" cy="12" r="7"/></svg></div><div class="type">Instant</div></div>
+      <div class="card-body"><div class="card-meta">LEB · 119 · Common</div><div class="card-loc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>Binder B · P2 · S1</div><span class="badge owned"><span class="dot"></span>Owned</span></div>
+    </div>
+  </div>
+
+  <div class="section-head"><h2>Binder Layout</h2><span class="count">Binder A · Page 3 · 3×3</span></div>
+  <div class="binder-wrap">
+    <div class="binder-page">
+      <div class="binder-grid">
+        <div class="slot art-w"><div class="sname" style="color:#5a4a2c;text-shadow:none">Wrath of God</div><div class="snum" style="color:#5a4a2c">1</div></div>
+        <div class="slot art-r"><div class="sname">Lightning Bolt</div><div class="snum">2</div></div>
+        <div class="slot empty"><div class="snum">3</div></div>
+        <div class="slot art-u"><div class="sname">Brainstorm</div><div class="snum">4</div></div>
+        <div class="slot art-g"><div class="sname">Llanowar Elves</div><div class="snum">5</div></div>
+        <div class="slot art-b"><div class="sname">Demonic Tutor</div><div class="snum">6</div></div>
+        <div class="slot art-c"><div class="sname">Sol Ring</div><div class="snum">7</div></div>
+        <div class="slot empty"><div class="snum">8</div></div>
+        <div class="slot art-r"><div class="sname">Fireball</div><div class="snum">9</div></div>
+      </div>
+    </div>
+    <div class="binder-side">
+      <div class="panel">
+        <h3>Binder A — Mythics</h3>
+        <p class="meta">12 pages · 3×3 · 108 slots</p>
+        <div class="kv"><span>Filled</span><b>78 / 108</b></div>
+        <div class="prog"><i></i></div>
+        <div class="legend">
+          <div><span class="swatch" style="background:linear-gradient(135deg,#ef7159,#b53322)"></span>Placed card</div>
+          <div><span class="swatch" style="background:var(--surface-2);border:1.5px dashed var(--line-strong)"></span>Empty / reserved</div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:18px">Edit Layout</button>
+        <button class="btn btn-ghost" style="width:100%;margin-top:8px">Add Spacer</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>Spellbinder · Arcanist concept — modern minimal, single arcane accent · light + dark</footer>
+</div>
+<script>
+function toggleTheme(){
+  const h=document.documentElement, d=h.getAttribute('data-theme')==='dark';
+  h.setAttribute('data-theme', d?'light':'dark');
+  document.getElementById('ticon').innerHTML = d
+    ? '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>'
+    : '<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/>';
+}
+</script>
+</body>
+</html>

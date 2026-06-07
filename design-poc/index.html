@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Spellbinder · Design Directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:'Inter',system-ui,sans-serif;background:#0c0b14;color:#f2f0fb;line-height:1.5;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(800px 400px at 12% -5%,rgba(138,107,255,.22),transparent 55%),radial-gradient(800px 400px at 90% 5%,rgba(86,194,255,.14),transparent 55%),#0c0b14}
+.wrap{max-width:1080px;margin:0 auto;padding:72px 24px 80px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#a7a2c6;display:flex;align-items:center;gap:10px}
+.kicker .pill{height:8px;width:54px;border-radius:100px;background:linear-gradient(100deg,#f3e4b6,#4aa3e8 30%,#5b4f6b 52%,#ef5a44 74%,#4fc172)}
+h1{font-family:'Sora',sans-serif;font-weight:800;font-size:46px;letter-spacing:-.025em;margin:18px 0 12px;line-height:1.05}
+.sub{font-size:18px;color:#a7a2c6;max-width:620px;margin:0 0 48px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+@media(max-width:840px){.cards{grid-template-columns:1fr}}
+a.card{display:block;text-decoration:none;color:inherit;background:#14121f;border:1px solid #241f3a;border-radius:20px;overflow:hidden;transition:transform .2s,box-shadow .2s,border-color .2s}
+a.card:hover{transform:translateY(-6px);box-shadow:0 24px 60px rgba(0,0,0,.5);border-color:#352e54}
+.swatchbar{height:120px;display:flex}
+.swatchbar div{flex:1}
+.body{padding:22px}
+.tag{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8a6bff}
+.body h2{font-family:'Sora',sans-serif;font-size:22px;margin:8px 0 8px;letter-spacing:-.01em}
+.body p{font-size:14px;color:#a7a2c6;margin:0 0 16px}
+.meta{font-size:12px;color:#6f6a90;border-top:1px solid #241f3a;padding-top:14px;display:flex;flex-direction:column;gap:5px}
+.meta b{color:#cfcae6;font-weight:600}
+.go{margin-top:16px;display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:#56c2ff}
+.note{margin-top:48px;font-size:13px;color:#6f6a90;border-top:1px solid #241f3a;padding-top:20px}
+.note b{color:#a7a2c6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker"><span class="pill"></span>Spellbinder — Branding & Design System</div>
+  <h1>Three directions to choose from</h1>
+  <p class="sub">Each is a working prototype with a light/dark toggle (top-right), built on the same component set: header, collection search with mana filters, card-result grid, and a binder slot-placement layout. Open one and flip the theme.</p>
+
+  <div class="cards">
+    <a class="card" href="grimoire.html">
+      <div class="swatchbar"><div style="background:#f4ecdc"></div><div style="background:#c08a36"></div><div style="background:#211b14"></div><div style="background:#d8b266"></div></div>
+      <div class="body">
+        <span class="tag">Direction A</span>
+        <h2>Grimoire</h2>
+        <p>Warm editorial fantasy. Aged parchment & gilded ink. A collector's library — premium and tactile, magic worn comfortably.</p>
+        <div class="meta">
+          <span><b>Type:</b> Cinzel + Spectral + Inter</span>
+          <span><b>Accent:</b> Gilded gold</span>
+          <span><b>Mood:</b> Heritage · refined · cozy</span>
+        </div>
+        <span class="go">Open prototype →</span>
+      </div>
+    </a>
+
+    <a class="card" href="arcanist.html">
+      <div class="swatchbar"><div style="background:#f7f7fb"></div><div style="background:#6d4aff"></div><div style="background:#16151d"></div><div style="background:#9b6bff"></div></div>
+      <div class="body">
+        <span class="tag">Direction B</span>
+        <h2>Arcanist</h2>
+        <p>Modern mystic minimal. Cool neutral canvas, one arcane-violet accent, lots of air. SaaS-grade clarity; the magic lives in the details.</p>
+        <div class="meta">
+          <span><b>Type:</b> Fraunces + Inter</span>
+          <span><b>Accent:</b> Arcane violet</span>
+          <span><b>Mood:</b> Clean · calm · trustworthy</span>
+        </div>
+        <span class="go">Open prototype →</span>
+      </div>
+    </a>
+
+    <a class="card" href="planar.html">
+      <div class="swatchbar"><div style="background:#f3e4b6"></div><div style="background:#4aa3e8"></div><div style="background:#08070e"></div><div style="background:#ef5a44"></div><div style="background:#4fc172"></div></div>
+      <div class="body">
+        <span class="tag">Direction C · chosen</span>
+        <h2>Planar <span style="font-size:13px;color:#4fdd8f;font-weight:600">(refined)</span></h2>
+        <p>Dark-first techno-fantasy. One solid violet accent does the everyday work; the five-color spectrum is rationed to where it's literally the data. Distinctly MTG, no seizure.</p>
+        <div class="meta">
+          <span><b>Type:</b> Sora + Inter</span>
+          <span><b>Accent:</b> Arcane violet (solid) + rationed spectrum</span>
+          <span><b>Mood:</b> Bold · focused · distinctly MTG</span>
+        </div>
+        <span class="go">Open prototype →</span>
+      </div>
+    </a>
+  </div>
+
+  <a class="card" href="binder-view.html" style="display:block;margin-top:24px">
+    <div class="swatchbar" style="height:64px"><div style="background:#9a7dff"></div><div style="background:#4aa3e8"></div><div style="background:#ef5a44"></div><div style="background:#4fc172"></div><div style="background:#e9d49a"></div></div>
+    <div class="body">
+      <span class="tag">Interactive prototype</span>
+      <h2>Binder View — responsive spread</h2>
+      <p>The signature feature, built out: auto spread↔single (fit-to-viewport), page-turn nav (buttons / arrow keys / swipe), thumbnail overview, and a touch-friendly card action sheet. <b>Resize the window</b> to feel the breakpoints.</p>
+      <span class="go">Open prototype →</span>
+    </div>
+  </a>
+
+  <p class="note"><b>Recommended framework for all three:</b> migrate to <b>shadcn-vue</b> (Reka UI + Tailwind CSS). It is unstyled by default, so it can wear any of these identities without looking generic, ships CSS-variable light/dark theming out of the box, and you own the component code. See the written plan for the token architecture and migration path.</p>
+</div>
+</body>
+</html>

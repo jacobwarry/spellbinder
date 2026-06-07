@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Spellbinder · Binder View</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============ BINDER VIEW POC — Planar (refined) ============
+   Demonstrates the responsive binder model:
+   - fit-to-viewport (contain), measured via ResizeObserver on the stage
+   - auto spread <-> single page based on whether a spread fits at a card floor
+   - page-turn nav: buttons + arrow keys + drag/swipe with live finger tracking
+   - overview (thumbnail) mode for fast jumping
+   - tap a card -> bottom sheet of actions (replaces hover-only menu; 44px targets)
+   - physical binder model: page 1 alone, then 2/3, 4/5..., last page alone
+   Resize the window (or DevTools device toolbar) to feel the breakpoints. */
+:root {
+  --font-display:'Sora',system-ui,sans-serif; --font-ui:'Inter',system-ui,sans-serif;
+  --r-sm:10px; --r-md:14px; --r-lg:20px; --r-pill:100px;
+  --mana-w:#e9d49a; --mana-u:#4aa3e8; --mana-b:#534a66; --mana-r:#ef5a44; --mana-g:#4fc172; --mana-c:#b7b1c8;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+html[data-theme="dark"]{
+  --bg:#08070e; --surface:#14121f; --surface-2:#1c1930; --surface-3:#252037;
+  --ink:#f2f0fb; --ink-soft:#a7a2c6; --ink-faint:#6f6a90;
+  --line:#241f3a; --line-strong:#352e54;
+  --accent:#9a7dff; --accent-2:#6fccff; --accent-soft:rgba(154,125,255,.14); --accent-glow:rgba(154,125,255,.30);
+  --owned:#4fdd8f; --owned-soft:rgba(79,221,143,.14); --skipped:#ff7766; --skipped-soft:rgba(255,119,102,.14); --missing:#6f6a90;
+  --paper:#171426; --paper-edge:#0f0d1b; --ring:#5b5570; --ring-hi:#8f88a8;
+  --shadow-1:0 2px 8px rgba(0,0,0,.4); --shadow-2:0 24px 60px rgba(0,0,0,.6);
+  --scrim:rgba(4,3,10,.62);
+}
+html[data-theme="light"]{
+  --bg:#eceaf5; --surface:#ffffff; --surface-2:#f3f1fb; --surface-3:#e9e6f5;
+  --ink:#131022; --ink-soft:#565078; --ink-faint:#8b86a8;
+  --line:#e6e3f3; --line-strong:#d4cfe8;
+  --accent:#6f48ff; --accent-2:#1f93e6; --accent-soft:rgba(111,72,255,.10); --accent-glow:rgba(111,72,255,.18);
+  --owned:#11a45f; --owned-soft:rgba(17,164,95,.12); --skipped:#e24a32; --skipped-soft:rgba(226,74,50,.12); --missing:#8b86a8;
+  --paper:#f7f5ff; --paper-edge:#dcd6ee; --ring:#b3acc9; --ring-hi:#fff;
+  --shadow-1:0 1px 3px rgba(30,20,80,.06),0 6px 20px rgba(30,20,80,.08); --shadow-2:0 18px 50px rgba(80,50,200,.18);
+  --scrim:rgba(30,22,70,.42);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:var(--font-ui);color:var(--ink);background:var(--bg);overflow:hidden;
+  -webkit-font-smoothing:antialiased;touch-action:manipulation}
+.shell{display:flex;flex-direction:column;height:100dvh}
+
+/* ---------- TOP BAR ---------- */
+.topbar{display:flex;align-items:center;gap:12px;padding:10px 16px;
+  background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);flex-shrink:0;z-index:10}
+.tb-left{display:flex;align-items:center;gap:11px;min-width:0;flex:1}
+.mark{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex-shrink:0;
+  background:linear-gradient(100deg,#e9d49a,#4aa3e8 27%,#6b5f7e 50%,#ef5a44 73%,#4fc172);box-shadow:0 0 16px var(--accent-glow)}
+.mark::after{content:"";position:absolute;width:31px;height:31px;border-radius:8px;background:var(--surface)}
+.mark svg{position:relative;z-index:1;width:18px;height:18px}
+.binder-title{min-width:0}
+.binder-title h1{font-family:var(--font-display);font-size:15px;font-weight:700;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.binder-title .sub{font-size:12px;color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.tb-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.mode-chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--ink-soft);
+  background:var(--surface-2);border:1px solid var(--line);padding:5px 10px;border-radius:var(--r-pill)}
+.mode-chip .d{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.iconbtn{min-width:40px;height:40px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--surface);
+  color:var(--ink-soft);cursor:pointer;display:grid;place-items:center;transition:all .15s;padding:0 9px;gap:6px;font-family:var(--font-ui);font-size:13px;font-weight:600}
+.iconbtn:hover{color:var(--accent);border-color:var(--line-strong)}
+.iconbtn.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.iconbtn svg{width:18px;height:18px}
+.hide-sm{display:inline}
+@media(max-width:560px){ .hide-sm{display:none} .iconbtn{padding:0;min-width:40px} }
+
+/* small config selector (POC only) */
+.cfg{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-faint)}
+.cfg select{font-family:var(--font-ui);font-size:12px;font-weight:600;color:var(--ink);background:var(--surface-2);
+  border:1px solid var(--line);border-radius:8px;padding:7px 8px;cursor:pointer}
+@media(max-width:680px){ .cfg{display:none} }
+
+/* ---------- STAGE ---------- */
+.stage{flex:1;position:relative;overflow:hidden;display:grid;place-items:center;padding:12px;min-height:0;
+  background:radial-gradient(900px 500px at 50% -10%,var(--accent-glow),transparent 60%)}
+.leaf{display:flex;align-items:flex-start;justify-content:center;gap:0;will-change:transform;touch-action:pan-y}
+/* binder spine between two open pages */
+.spine{width:28px;align-self:stretch;flex-shrink:0;position:relative;
+  background:linear-gradient(90deg,var(--paper-edge),color-mix(in srgb,var(--paper-edge) 50%,transparent),var(--paper-edge))}
+.rings{position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;justify-content:space-evenly;padding:14px 0}
+.ring{width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,var(--ring-hi),var(--ring));box-shadow:inset 0 -1px 2px rgba(0,0,0,.5),0 1px 1px rgba(0,0,0,.3)}
+
+/* a page */
+.page{background:var(--paper);border:1px solid var(--line-strong);border-radius:10px;padding:var(--pad,10px);
+  box-shadow:var(--shadow-2);position:relative}
+.page.left{border-radius:12px 4px 4px 12px}
+.page.right{border-radius:4px 12px 12px 4px}
+.page-grid{display:grid;gap:var(--gap,6px)}
+.cover{background:repeating-linear-gradient(135deg,var(--surface-2),var(--surface-2) 10px,var(--surface) 10px,var(--surface) 20px);
+  border:1px dashed var(--line-strong);border-radius:12px;display:grid;place-items:center;color:var(--ink-faint);font-size:12px;text-align:center;padding:12px}
+
+/* a slot */
+.slot{position:relative;aspect-ratio:63/88;border-radius:8px;overflow:hidden;cursor:pointer;border:0;padding:0;
+  display:block;background:var(--surface-2);transition:transform .12s var(--ease),box-shadow .12s}
+.slot:active{transform:scale(.97)}
+.slot:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.slot.empty{background:var(--surface);border:1.5px dashed var(--line-strong);display:grid;place-items:center;cursor:pointer}
+.slot.empty .snum{position:absolute;top:5px;left:7px;font-size:10px;font-weight:700;color:var(--ink-faint)}
+.slot.empty .plus{font-size:22px;color:var(--ink-faint);font-weight:300;line-height:1;opacity:.5;transition:opacity .15s,color .15s}
+.slot.empty:hover .plus{opacity:1;color:var(--accent)}
+.slot .art{position:absolute;inset:0}
+.slot .art::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.05) 40%,rgba(0,0,0,.55))}
+.slot .cname{position:absolute;left:6px;right:6px;top:6px;z-index:1;font-size:10px;font-weight:700;color:#fff;
+  text-shadow:0 1px 3px rgba(0,0,0,.7);line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.slot .cnum{position:absolute;left:6px;right:6px;bottom:5px;z-index:1;font-size:9px;font-weight:600;color:rgba(255,255,255,.9);
+  text-shadow:0 1px 2px rgba(0,0,0,.7);font-variant-numeric:tabular-nums;display:flex;justify-content:space-between;gap:4px}
+.slot .ind{position:absolute;top:5px;right:5px;z-index:2;width:16px;height:16px;border-radius:50%;display:grid;place-items:center;
+  color:#06210f;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.slot .ind svg{width:10px;height:10px}
+.slot.owned .ind{background:var(--owned)}
+.slot.skip .ind{background:var(--skipped);color:#2a0c08}
+.slot.missing .art{filter:grayscale(1) brightness(.6)}
+.slot.missing .cname,.slot.missing .cnum{color:rgba(255,255,255,.7)}
+.slot.skip .art{filter:grayscale(.9) brightness(.55) sepia(.4) hue-rotate(-30deg)}
+.art-r{background:radial-gradient(circle at 50% 30%,#ff6a52,#a32417)} .art-u{background:radial-gradient(circle at 50% 30%,#54b0f0,#1c5996)}
+.art-g{background:radial-gradient(circle at 50% 30%,#54cf80,#1f7a40)} .art-b{background:radial-gradient(circle at 50% 30%,#6a5f80,#211a2e)}
+.art-w{background:radial-gradient(circle at 50% 30%,#f6ecc4,#cdb478)} .art-c{background:radial-gradient(circle at 50% 30%,#c3bdd2,#797295)}
+
+/* page-turn animations */
+@keyframes inRight{from{transform:translateX(7%);opacity:0}to{transform:none;opacity:1}}
+@keyframes inLeft{from{transform:translateX(-7%);opacity:0}to{transform:none;opacity:1}}
+.anim-r{animation:inRight .26s var(--ease)} .anim-l{animation:inLeft .26s var(--ease)}
+@media(prefers-reduced-motion:reduce){ .anim-r,.anim-l{animation:none} .slot:active{transform:none} }
+
+/* ---------- BOTTOM NAV ---------- */
+.navbar{display:flex;align-items:center;gap:12px;padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(14px);border-top:1px solid var(--line);flex-shrink:0;z-index:10}
+.navbtn{height:44px;min-width:44px;border-radius:var(--r-md);border:1px solid var(--line-strong);background:var(--surface);
+  color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:7px;padding:0 16px;font-family:var(--font-ui);font-weight:700;font-size:14px;transition:all .15s}
+.navbtn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.navbtn:disabled{opacity:.4;cursor:not-allowed}
+.navbtn svg{width:18px;height:18px}
+.nav-center{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px}
+.nav-label{font-size:13px;font-weight:600;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap}
+.nav-progress{width:100%;max-width:280px;height:5px;border-radius:100px;background:var(--surface-2);overflow:hidden}
+.nav-progress>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .26s var(--ease)}
+.zoom{display:flex;align-items:center;gap:4px}
+.zoom .navbtn{padding:0;min-width:44px}
+@media(max-width:560px){ .navbtn .t{display:none} .zoom{display:none} }
+
+/* ---------- OVERVIEW ---------- */
+.overview{position:absolute;inset:0;z-index:20;background:var(--bg);overflow-y:auto;display:none;padding:20px;
+  -webkit-overflow-scrolling:touch}
+.overview.show{display:block;animation:inUp .24s var(--ease)}
+@keyframes inUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.ov-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;position:sticky;top:-20px;
+  padding:16px 0;background:linear-gradient(var(--bg),var(--bg) 70%,transparent)}
+.ov-head h2{font-family:var(--font-display);font-size:20px;margin:0}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:16px;max-width:1100px;margin:0 auto}
+.thumb{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:9px;cursor:pointer;transition:all .15s}
+.thumb:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:var(--shadow-2)}
+.thumb.current{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.thumb-grid{display:grid;gap:3px}
+.tcell{aspect-ratio:63/88;border-radius:2px;background:var(--surface-2)}
+.tcell.e{background:transparent;border:1px dashed var(--line-strong)}
+.tcell.m{opacity:.4}
+.thumb .tlabel{margin-top:8px;font-size:12px;font-weight:600;color:var(--ink-soft);text-align:center;font-variant-numeric:tabular-nums}
+
+/* ---------- BOTTOM SHEET ---------- */
+.scrim{position:absolute;inset:0;z-index:30;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .2s}
+.scrim.show{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:31;background:var(--surface);border-radius:18px 18px 0 0;
+  border-top:1px solid var(--line-strong);box-shadow:0 -10px 40px rgba(0,0,0,.4);
+  transform:translateY(110%);transition:transform .28s var(--ease);padding:8px 16px calc(20px + env(safe-area-inset-bottom));
+  max-width:520px;margin:0 auto}
+.sheet.show{transform:none}
+.grip{width:38px;height:4px;border-radius:100px;background:var(--line-strong);margin:8px auto 14px}
+.sheet-head{display:flex;gap:14px;align-items:center;margin-bottom:16px}
+.sheet-thumb{width:52px;height:73px;border-radius:8px;flex-shrink:0;position:relative;overflow:hidden}
+.sheet-info{min-width:0}
+.sheet-info h3{font-family:var(--font-display);font-size:17px;margin:0 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet-info .meta{font-size:13px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.sheet-info .loc{font-size:12px;color:var(--accent-2);margin-top:3px;font-variant-numeric:tabular-nums}
+.sheet-status{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:var(--r-pill);margin-top:6px}
+.actions{display:flex;flex-direction:column;gap:8px}
+.act{display:flex;align-items:center;gap:12px;width:100%;height:48px;padding:0 14px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:var(--surface-2);color:var(--ink);cursor:pointer;font-family:var(--font-ui);
+  font-size:14px;font-weight:600;text-align:left;transition:all .14s}
+.act:hover{border-color:var(--line-strong);background:var(--surface-3)}
+.act svg{width:19px;height:19px;flex-shrink:0;color:var(--ink-soft)}
+.act.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.act.primary svg{color:#fff}
+.act.primary:hover{filter:brightness(1.08)}
+.act.danger{color:var(--skipped)} .act.danger svg{color:var(--skipped)}
+.spacer-row{display:flex;align-items:center;justify-content:space-between;height:48px;padding:0 14px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:var(--surface-2);font-size:14px;font-weight:600}
+.stepper{display:flex;align-items:center;gap:10px}
+.stepper button{width:36px;height:36px;border-radius:9px;border:1px solid var(--line-strong);background:var(--surface);
+  color:var(--ink);font-size:18px;cursor:pointer;display:grid;place-items:center}
+.stepper button:disabled{opacity:.35;cursor:not-allowed}
+.stepper .val{min-width:20px;text-align:center;font-variant-numeric:tabular-nums}
+
+.tag{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:40;font-size:10px;font-weight:700;
+  letter-spacing:.06em;color:var(--ink-faint);background:var(--surface);border:1px solid var(--line);padding:4px 10px;border-radius:var(--r-pill);pointer-events:none;opacity:.85}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="tb-left">
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="url(#g)" stroke-width="1.8"><defs><linearGradient id="g" x1="0" y1="0" x2="24" y2="24"><stop offset="0" stop-color="#9a7dff"/><stop offset="1" stop-color="#6fccff"/></linearGradient></defs><path d="M5 5.2C5 4.5 5.5 4 6.2 4H19v15.5H7A2 2 0 0 1 5 17.5Z"/><path d="M5 17.5A2 2 0 0 1 7 15.5h12"/></svg></div>
+      <div class="binder-title">
+        <h1>Binder A — Mythics</h1>
+        <div class="sub" id="subMeta">3×3 · 24 pages</div>
+      </div>
+    </div>
+    <div class="tb-right">
+      <div class="cfg">
+        <label for="cfgSize">Layout</label>
+        <select id="cfgSize">
+          <option value="9">3×3 (9)</option>
+          <option value="12">4×3 (12)</option>
+        </select>
+      </div>
+      <span class="mode-chip" id="modeChip"><span class="d"></span><span id="modeText">Spread</span></span>
+      <button class="iconbtn" id="ovBtn" aria-label="Toggle overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="hide-sm">Overview</span>
+      </button>
+      <button class="iconbtn" id="themeBtn" aria-label="Toggle theme">
+        <svg id="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="tag">Binder View POC · resize me</div>
+    <div class="leaf" id="leaf"></div>
+    <!-- overview overlay -->
+    <div class="overview" id="overview">
+      <div class="ov-head">
+        <h2>All pages</h2>
+        <button class="iconbtn" id="ovClose" aria-label="Close overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="ov-grid" id="ovGrid"></div>
+    </div>
+    <!-- bottom sheet -->
+    <div class="scrim" id="scrim"></div>
+    <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Card actions"></div>
+  </div>
+
+  <div class="navbar">
+    <button class="navbtn" id="prevBtn" aria-label="Previous page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 18-6-6 6-6"/></svg><span class="t">Prev</span></button>
+    <div class="nav-center">
+      <span class="nav-label" id="navLabel">Page 1 of 24</span>
+      <div class="nav-progress"><i id="navProg" style="width:4%"></i></div>
+    </div>
+    <div class="zoom">
+      <button class="navbtn" id="zoomOut" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+      <button class="navbtn" id="zoomFit" aria-label="Fit to screen" title="Fit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+      <button class="navbtn" id="zoomIn" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+    </div>
+    <button class="navbtn" id="nextBtn" aria-label="Next page"><span class="t">Next</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m9 18 6-6-6-6"/></svg></button>
+  </div>
+</div>
+
+<script>
+/* ---------------- data ---------------- */
+const POOL = [
+  ['Lightning Bolt','r','Instant'],['Counterspell','u','Instant'],['Llanowar Elves','g','Creature'],
+  ['Dark Ritual','b','Instant'],['Swords to Plowshares','w','Instant'],['Sol Ring','c','Artifact'],
+  ['Birds of Paradise','g','Creature'],['Brainstorm','u','Instant'],['Wrath of God','w','Sorcery'],
+  ['Demonic Tutor','b','Sorcery'],['Fireball','r','Sorcery'],['Giant Growth','g','Instant'],
+  ['Path to Exile','w','Instant'],['Mana Crypt','c','Artifact'],['Doom Blade','b','Instant'],
+  ['Serra Angel','w','Creature'],['Shivan Dragon','r','Creature'],['Cabal Coffers','c','Land'],
+  ['Ponder','u','Sorcery'],['Eternal Witness','g','Creature'],['Vampiric Tutor','b','Instant'],
+  ['Cultivate','g','Sorcery'],['Negate','u','Instant'],['Lightning Helix','r','Instant'],
+  ['Thoughtseize','b','Sorcery'],['Snapcaster Mage','u','Creature'],['Tarmogoyf','g','Creature'],
+  ['Goblin Guide','r','Creature'],['Sword of Fire and Ice','c','Artifact'],['Elspeth, Sun\'s Champion','w','Planeswalker']
+];
+const SETS = ['LEA','MH2','C21','RVR','M19','STA','LEB','MH3','DSK','BLB'];
+
+let BINDER = { name:'Binder A — Mythics', pageCount:24, slotsPerPage:9 };
+let pages = []; // pages[p][slot] = card | null
+
+function gridDims(){ const cols = BINDER.slotsPerPage===12?4:3; return { cols, rows:3 }; }
+
+function buildData(){
+  pages = [];
+  let gi = 0;
+  for(let p=0;p<BINDER.pageCount;p++){
+    const slots=[];
+    for(let s=0;s<BINDER.slotsPerPage;s++){
+      gi++;
+      const r = (gi*97)%100;          // deterministic pseudo-distribution
+      if(r<11){ slots.push(null); continue; }           // empty / reserved
+      const def = POOL[(gi*7)%POOL.length];
+      let status='owned';
+      if(r>=11 && r<33) status='missing';
+      else if(r>=33 && r<40) status='skipped';
+      slots.push({
+        name:def[0], color:def[1], type:def[2],
+        set:SETS[(gi*3)%SETS.length], num:String((gi*13)%320+1).padStart(3,'0'),
+        rarity:['C','U','R','M'][gi%4], status, spacer:0
+      });
+    }
+    pages.push(slots);
+  }
+}
+
+/* ---------------- view model (binder spread logic) ---------------- */
+function spreadViews(){
+  const P=BINDER.pageCount, v=[[1]];
+  for(let p=2;p<=P;p+=2){ v.push(p+1<=P?[p,p+1]:[p]); }
+  return v;
+}
+function singleViews(){ return Array.from({length:BINDER.pageCount},(_,i)=>[i+1]); }
+
+const state = { layout:'spread', viewIndex:0, zoom:1, baseCard:120, currentPage:1 };
+
+function activeViews(){ return state.layout==='spread'?spreadViews():singleViews(); }
+function viewIndexForPage(pg){
+  const vs=activeViews();
+  for(let i=0;i<vs.length;i++){ if(vs[i].includes(pg)) return i; }
+  return Math.min(vs.length-1, Math.max(0, pg-1));
+}
+
+/* ---------------- layout / fit-to-viewport ---------------- */
+const GAP=6, PAD=10, GUTTER=28, ASPECT=88/63, MIN_SPREAD_CARD=84, MIN_CARD=58, MAX_CARD=210;
+const stage=document.getElementById('stage');
+
+function computeLayout(){
+  const {cols,rows}=gridDims();
+  const SW=stage.clientWidth-24, SH=stage.clientHeight-24;
+  const heightCard = (SH-(rows-1)*GAP-2*PAD)/(rows*ASPECT);
+  // single
+  const singleW = (SW-(cols-1)*GAP-2*PAD)/cols;
+  const single = Math.min(singleW, heightCard);
+  // spread (two pages + spine)
+  const perPage = (SW-GUTTER)/2;
+  const spreadW = (perPage-(cols-1)*GAP-2*PAD)/cols;
+  const spread = Math.min(spreadW, heightCard);
+  // decide: spread only if it stays above the readability floor and there's real width
+  const useSpread = spread>=MIN_SPREAD_CARD && SW>=620;
+  const prevLayout=state.layout;
+  state.layout = useSpread?'spread':'single';
+  state.baseCard = Math.max(MIN_CARD, Math.min(MAX_CARD, useSpread?spread:single));
+  if(prevLayout!==state.layout){ state.viewIndex = viewIndexForPage(state.currentPage); }
+}
+
+/* ---------------- rendering ---------------- */
+const leaf=document.getElementById('leaf');
+
+function artClass(c){ return 'art-'+c; }
+function indSVG(status){
+  if(status==='owned') return '<span class="ind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="m20 6-11 11-5-5"/></svg></span>';
+  if(status==='skipped') return '<span class="ind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M18 6 6 18M6 6l12 12"/></svg></span>';
+  return '';
+}
+function pageEl(pageNum, side){
+  const {cols}=gridDims();
+  const cardPx = state.baseCard*state.zoom;
+  const el=document.createElement('div');
+  el.className='page'+(side?(' '+side):'');
+  el.style.setProperty('--pad',PAD+'px'); el.style.setProperty('--gap',GAP+'px');
+  const grid=document.createElement('div');
+  grid.className='page-grid';
+  grid.style.gridTemplateColumns=`repeat(${cols}, ${cardPx}px)`;
+  const slots=pages[pageNum-1]||[];
+  slots.forEach((card,i)=>{
+    const slot=BINDER.slotsPerPage===12?i+1:i+1;
+    const b=document.createElement('button');
+    if(!card){
+      b.className='slot empty';
+      b.innerHTML=`<span class="snum">${slot}</span><span class="plus">+</span>`;
+      b.setAttribute('aria-label',`Empty slot ${slot} on page ${pageNum}. Add a card.`);
+    }else{
+      const st=card.status;
+      b.className='slot '+(st==='owned'?'owned':st==='skipped'?'skip':'missing');
+      b.innerHTML=`<span class="art ${artClass(card.color)}"></span>
+        <span class="cname">${card.name}</span>
+        ${indSVG(st)}
+        <span class="cnum"><span>${card.set} ${card.rarity}</span><span>${card.num}</span></span>`;
+      b.setAttribute('aria-label',`${card.name}, ${card.set} ${card.num}, ${st}. Page ${pageNum}, slot ${slot}. Open actions.`);
+      b.addEventListener('click',()=>openSheet(pageNum,i));
+    }
+    grid.appendChild(b);
+  });
+  el.appendChild(grid);
+  return el;
+}
+function coverEl(side,label){
+  const {cols,rows}=gridDims();
+  const cardPx=state.baseCard*state.zoom;
+  const w=cols*cardPx+(cols-1)*GAP+2*PAD;
+  const h=rows*cardPx*ASPECT+(rows-1)*GAP+2*PAD;
+  const el=document.createElement('div');
+  el.className='page cover '+side;
+  el.style.width=w+'px'; el.style.height=h+'px';
+  el.innerHTML=`<span>${label}</span>`;
+  return el;
+}
+function spineEl(){
+  const {rows}=gridDims();
+  const cardPx=state.baseCard*state.zoom;
+  const h=rows*cardPx*ASPECT+(rows-1)*GAP+2*PAD;
+  const el=document.createElement('div');
+  el.className='spine'; el.style.height=h+'px';
+  let rings=''; for(let i=0;i<rows+1;i++) rings+='<span class="ring"></span>';
+  el.innerHTML=`<div class="rings">${rings}</div>`;
+  return el;
+}
+
+function render(dir){
+  computeLayout();
+  const vs=activeViews();
+  state.viewIndex=Math.max(0,Math.min(vs.length-1,state.viewIndex));
+  const view=vs[state.viewIndex];
+  state.currentPage=view[0];
+  leaf.innerHTML='';
+  leaf.style.transform='';
+  if(state.layout==='spread'){
+    if(view.length===1 && view[0]===1){
+      // front: inside cover (left) + page 1 (right)
+      leaf.appendChild(coverEl('left','Inside front cover'));
+      leaf.appendChild(spineEl());
+      leaf.appendChild(pageEl(1,'right'));
+    } else if(view.length===1){
+      // lone last page (left) + back cover (right)
+      leaf.appendChild(pageEl(view[0],'left'));
+      leaf.appendChild(spineEl());
+      leaf.appendChild(coverEl('right','Inside back cover'));
+    } else {
+      leaf.appendChild(pageEl(view[0],'left'));
+      leaf.appendChild(spineEl());
+      leaf.appendChild(pageEl(view[1],'right'));
+    }
+  } else {
+    leaf.appendChild(pageEl(view[0]));
+  }
+  if(dir){
+    const cls=dir>0?'anim-r':'anim-l';
+    [...leaf.children].forEach(c=>{ if(c.classList.contains('page')){ c.classList.add(cls); } });
+  }
+  updateChrome();
+}
+
+function updateChrome(){
+  const vs=activeViews(), view=vs[state.viewIndex], P=BINDER.pageCount;
+  // mode chip
+  document.getElementById('modeText').textContent = state.layout==='spread'?'Spread':'Single page';
+  // nav label
+  let label;
+  if(state.layout==='spread' && view.length===2) label=`Pages ${view[0]}–${view[1]} of ${P}`;
+  else label=`Page ${view[0]} of ${P}`;
+  document.getElementById('navLabel').textContent=label;
+  // progress
+  const lastPage=view[view.length-1];
+  document.getElementById('navProg').style.width=(lastPage/P*100)+'%';
+  // buttons
+  document.getElementById('prevBtn').disabled=state.viewIndex===0;
+  document.getElementById('nextBtn').disabled=state.viewIndex===vs.length-1;
+  document.getElementById('subMeta').textContent=`${gridDims().cols}×${gridDims().rows} · ${P} pages`;
+}
+
+/* ---------------- navigation ---------------- */
+function nav(dir){
+  const vs=activeViews();
+  const ni=state.viewIndex+dir;
+  if(ni<0||ni>=vs.length) return;
+  state.viewIndex=ni;
+  render(dir);
+}
+document.getElementById('prevBtn').onclick=()=>nav(-1);
+document.getElementById('nextBtn').onclick=()=>nav(1);
+window.addEventListener('keydown',e=>{
+  if(document.getElementById('sheet').classList.contains('show')){ if(e.key==='Escape') closeSheet(); return; }
+  if(document.getElementById('overview').classList.contains('show')){ if(e.key==='Escape') toggleOverview(false); return; }
+  if(e.key==='ArrowRight') nav(1);
+  else if(e.key==='ArrowLeft') nav(-1);
+});
+
+/* drag / swipe with live tracking */
+let drag=null;
+leaf.addEventListener('pointerdown',e=>{
+  if(e.target.closest('.slot')) { drag={x:e.clientX,moved:false,onCard:true}; return; }
+  drag={x:e.clientX,moved:false,onCard:false}; leaf.setPointerCapture(e.pointerId);
+});
+leaf.addEventListener('pointermove',e=>{
+  if(!drag||drag.onCard) return;
+  const dx=e.clientX-drag.x;
+  if(Math.abs(dx)>6) drag.moved=true;
+  if(drag.moved) leaf.style.transform=`translateX(${dx*0.5}px)`;
+});
+function endDrag(e){
+  if(!drag){return;}
+  if(!drag.onCard && drag.moved){
+    const dx=e.clientX-drag.x;
+    leaf.style.transform='';
+    if(dx<=-60) nav(1);
+    else if(dx>=60) nav(-1);
+  }
+  drag=null;
+}
+leaf.addEventListener('pointerup',endDrag);
+leaf.addEventListener('pointercancel',()=>{leaf.style.transform='';drag=null;});
+
+/* ---------------- bottom sheet ---------------- */
+const sheet=document.getElementById('sheet'), scrim=document.getElementById('scrim');
+let sheetRef=null;
+function statusPill(st){
+  if(st==='owned') return `<span class="sheet-status" style="color:var(--owned);background:var(--owned-soft)">Owned</span>`;
+  if(st==='skipped') return `<span class="sheet-status" style="color:var(--skipped);background:var(--skipped-soft)">Skipped</span>`;
+  return `<span class="sheet-status" style="color:var(--missing);background:var(--surface-2)">Missing</span>`;
+}
+function openSheet(pageNum,slotIdx){
+  const card=pages[pageNum-1][slotIdx];
+  sheetRef={pageNum,slotIdx};
+  const st=card.status, owned=st==='owned';
+  sheet.innerHTML=`
+    <div class="grip"></div>
+    <div class="sheet-head">
+      <div class="sheet-thumb"><span class="art ${artClass(card.color)}" style="position:absolute;inset:0"></span></div>
+      <div class="sheet-info">
+        <h3>${card.name}</h3>
+        <div class="meta">${card.set} · ${card.num} · ${({C:'Common',U:'Uncommon',R:'Rare',M:'Mythic'})[card.rarity]}</div>
+        <div class="loc">Page ${pageNum} · Slot ${slotIdx+1}</div>
+        ${statusPill(st)}
+      </div>
+    </div>
+    <div class="actions">
+      <button class="act primary" data-a="own">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m20 6-11 11-5-5"/></svg>
+        ${owned?'Mark as not owned':'Mark as owned'}
+      </button>
+      <button class="act" data-a="skip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M5 5l14 14"/></svg>
+        ${st==='skipped'?'Unskip card':'Skip this card'}
+      </button>
+      <div class="spacer-row">
+        <span>Blank slots before</span>
+        <div class="stepper">
+          <button data-a="sp-" aria-label="Remove blank" ${card.spacer===0?'disabled':''}>−</button>
+          <span class="val" id="spVal">${card.spacer}</span>
+          <button data-a="sp+" aria-label="Add blank">+</button>
+        </div>
+      </div>
+      <button class="act" data-a="scry">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+        Open on Scryfall
+      </button>
+      <button class="act danger" data-a="remove">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        Remove from segment
+      </button>
+    </div>`;
+  scrim.classList.add('show'); sheet.classList.add('show');
+  sheet.querySelectorAll('[data-a]').forEach(b=>b.addEventListener('click',()=>sheetAction(b.dataset.a)));
+}
+function closeSheet(){ sheet.classList.remove('show'); scrim.classList.remove('show'); sheetRef=null; }
+scrim.addEventListener('click',closeSheet);
+function sheetAction(a){
+  if(!sheetRef) return;
+  const card=pages[sheetRef.pageNum-1][sheetRef.slotIdx];
+  if(a==='own'){ card.status = card.status==='owned'?'missing':'owned'; }
+  else if(a==='skip'){ card.status = card.status==='skipped'?'missing':'skipped'; }
+  else if(a==='sp+'){ card.spacer++; document.getElementById('spVal').textContent=card.spacer; }
+  else if(a==='sp-'){ card.spacer=Math.max(0,card.spacer-1); document.getElementById('spVal').textContent=card.spacer; }
+  else if(a==='scry'){ window.open(`https://scryfall.com/search?q=${encodeURIComponent(card.name)}`,'_blank'); closeSheet(); return; }
+  else if(a==='remove'){ closeSheet(); return; }
+  if(a==='own'||a==='skip'){ render(); openSheet(sheetRef.pageNum,sheetRef.slotIdx); }
+}
+/* swipe-down to dismiss sheet */
+let sdrag=null;
+sheet.addEventListener('pointerdown',e=>{ sdrag={y:e.clientY}; });
+sheet.addEventListener('pointermove',e=>{ if(!sdrag)return; const dy=e.clientY-sdrag.y; if(dy>0) sheet.style.transform=`translateY(${dy}px)`; });
+sheet.addEventListener('pointerup',e=>{ if(!sdrag)return; const dy=e.clientY-sdrag.y; sheet.style.transform=''; if(dy>90) closeSheet(); sdrag=null; });
+
+/* ---------------- overview ---------------- */
+const overview=document.getElementById('overview'), ovGrid=document.getElementById('ovGrid');
+function buildOverview(){
+  const {cols}=gridDims();
+  ovGrid.innerHTML='';
+  for(let p=1;p<=BINDER.pageCount;p++){
+    const t=document.createElement('button');
+    t.className='thumb'+(p===state.currentPage?' current':'');
+    let cells='';
+    pages[p-1].forEach(card=>{
+      if(!card) cells+='<span class="tcell e"></span>';
+      else cells+=`<span class="tcell ${artClass(card.color)} ${card.status!=='owned'?'m':''}"></span>`;
+    });
+    t.innerHTML=`<div class="thumb-grid" style="grid-template-columns:repeat(${cols},1fr)">${cells}</div><div class="tlabel">Page ${p}</div>`;
+    t.addEventListener('click',()=>{ state.currentPage=p; state.viewIndex=viewIndexForPage(p); toggleOverview(false); render(); });
+    ovGrid.appendChild(t);
+  }
+}
+function toggleOverview(force){
+  const show = force!==undefined?force:!overview.classList.contains('show');
+  if(show){ buildOverview(); overview.classList.add('show'); document.getElementById('ovBtn').classList.add('on'); }
+  else { overview.classList.remove('show'); document.getElementById('ovBtn').classList.remove('on'); }
+}
+document.getElementById('ovBtn').onclick=()=>toggleOverview();
+document.getElementById('ovClose').onclick=()=>toggleOverview(false);
+
+/* ---------------- zoom ---------------- */
+function setZoom(z){ state.zoom=Math.max(0.6,Math.min(2.4,z)); render(); }
+document.getElementById('zoomIn').onclick=()=>setZoom(state.zoom+0.15);
+document.getElementById('zoomOut').onclick=()=>setZoom(state.zoom-0.15);
+document.getElementById('zoomFit').onclick=()=>setZoom(1);
+
+/* ---------------- config + theme ---------------- */
+document.getElementById('cfgSize').onchange=e=>{
+  BINDER.slotsPerPage=parseInt(e.target.value,10);
+  buildData(); state.viewIndex=viewIndexForPage(state.currentPage); render();
+};
+document.getElementById('themeBtn').onclick=()=>{
+  const h=document.documentElement, d=h.getAttribute('data-theme')==='dark';
+  h.setAttribute('data-theme',d?'light':'dark');
+  document.getElementById('ticon').innerHTML=d
+    ?'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>'
+    :'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/>';
+};
+
+/* ---------------- boot ---------------- */
+buildData();
+new ResizeObserver(()=>{ render(); }).observe(stage);
+render();
+</script>
+</body>
+</html>
