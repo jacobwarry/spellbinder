@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ChevronDown } from 'lucide-vue-next'
 
 interface Option {
   label: string
@@ -24,6 +25,7 @@ const emit = defineEmits<{
 const isOpen = ref(false)
 const searchQuery = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
+const root = ref<HTMLElement | null>(null)
 
 const selectedText = computed(() => {
   if (props.modelValue.length === 0) {
@@ -39,14 +41,11 @@ const filteredGroups = computed(() => {
   if (!searchQuery.value.trim()) {
     return props.groups
   }
-
   const query = searchQuery.value.toLowerCase()
   return props.groups
     .map(group => ({
       ...group,
-      options: group.options.filter(option =>
-        option.label.toLowerCase().includes(query)
-      )
+      options: group.options.filter(option => option.label.toLowerCase().includes(query))
     }))
     .filter(group => group.options.length > 0)
 })
@@ -63,13 +62,8 @@ async function toggleDropdown() {
 function toggleOption(value: string) {
   const index = props.modelValue.indexOf(value)
   const newValue = [...props.modelValue]
-
-  if (index > -1) {
-    newValue.splice(index, 1)
-  } else {
-    newValue.push(value)
-  }
-
+  if (index > -1) newValue.splice(index, 1)
+  else newValue.push(value)
   emit('update:modelValue', newValue)
 }
 
@@ -77,181 +71,57 @@ function isSelected(value: string) {
   return props.modelValue.includes(value)
 }
 
-// Close dropdown when clicking outside
 function handleClickOutside(event: MouseEvent) {
-  const target = event.target as HTMLElement
-  const dropdown = document.querySelector('.multiselect-dropdown')
-  if (dropdown && !dropdown.contains(target)) {
+  if (root.value && !root.value.contains(event.target as Node)) {
     isOpen.value = false
   }
 }
 
-// Add/remove event listener when component mounts/unmounts
-import { onMounted, onUnmounted } from 'vue'
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
+onMounted(() => document.addEventListener('click', handleClickOutside))
+onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 </script>
 
 <template>
-  <div class="multiselect-dropdown">
-    <button type="button" class="dropdown-toggle" @click="toggleDropdown">
-      <span class="selected-text">{{ selectedText }}</span>
-      <svg class="dropdown-arrow" :class="{ open: isOpen }" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
+  <div ref="root" class="relative w-full">
+    <button
+      type="button"
+      class="flex w-full items-center justify-between gap-2 rounded-md border border-line bg-surface px-3 py-2 text-left text-sm outline-none transition-colors hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring"
+      @click="toggleDropdown"
+    >
+      <span class="flex-1 truncate" :class="modelValue.length ? 'text-foreground' : 'text-ink-faint'">{{ selectedText }}</span>
+      <ChevronDown :size="16" class="shrink-0 text-ink-soft transition-transform" :class="isOpen && 'rotate-180'" />
     </button>
 
-    <div v-if="isOpen" class="dropdown-menu">
-      <div class="search-box">
+    <div
+      v-if="isOpen"
+      class="absolute inset-x-0 top-full z-20 mt-1 max-h-100 overflow-y-auto rounded-md border border-line bg-surface shadow-(--shadow-2)"
+    >
+      <div class="sticky top-0 z-10 border-b border-line bg-surface p-2">
         <input
           ref="searchInput"
           v-model="searchQuery"
           type="text"
-          placeholder="Search types..."
-          class="search-input"
+          placeholder="Search types…"
+          class="w-full rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           @click.stop
         />
       </div>
-      <div v-for="group in filteredGroups" :key="group.label" class="option-group">
-        <div class="group-label">{{ group.label }}</div>
-        <label v-for="option in group.options" :key="option.value" class="option-item">
+      <div v-for="group in filteredGroups" :key="group.label" class="border-b border-line py-1 last:border-b-0">
+        <div class="bg-surface-2 px-3 py-1.5 text-sm font-bold text-ink-soft">{{ group.label }}</div>
+        <label
+          v-for="option in group.options"
+          :key="option.value"
+          class="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-surface-2"
+        >
           <input
             type="checkbox"
+            class="size-4 cursor-pointer accent-brand"
             :checked="isSelected(option.value)"
             @change="toggleOption(option.value)"
           />
-          <span>{{ option.label }}</span>
+          <span class="flex-1">{{ option.label }}</span>
         </label>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.multiselect-dropdown {
-  position: relative;
-  width: 100%;
-}
-
-.dropdown-toggle {
-  width: 100%;
-  padding: 0.5rem;
-  padding-right: 2rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background: white;
-  text-align: left;
-  cursor: pointer;
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.dropdown-toggle:hover {
-  border-color: #bbb;
-}
-
-.dropdown-toggle:focus {
-  outline: none;
-  border-color: #4a90d9;
-}
-
-.selected-text {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #333;
-}
-
-.dropdown-arrow {
-  transition: transform 0.2s;
-  flex-shrink: 0;
-}
-
-.dropdown-arrow.open {
-  transform: rotate(180deg);
-}
-
-.dropdown-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 0.25rem;
-  max-height: 400px;
-  overflow-y: auto;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
-}
-
-.search-box {
-  position: sticky;
-  top: 0;
-  background: white;
-  padding: 0.5rem;
-  border-bottom: 1px solid #eee;
-  z-index: 10;
-}
-
-.search-input {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 0.875rem;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #4a90d9;
-}
-
-.option-group {
-  padding: 0.5rem 0;
-}
-
-.option-group:not(:last-child) {
-  border-bottom: 1px solid #eee;
-}
-
-.group-label {
-  padding: 0.5rem 0.75rem;
-  font-weight: bold;
-  font-size: 0.875rem;
-  color: #333;
-  background: #f9f9f9;
-}
-
-.option-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: #666;
-}
-
-.option-item:hover {
-  background: #f0f7ff;
-}
-
-.option-item input[type="checkbox"] {
-  cursor: pointer;
-}
-
-.option-item span {
-  flex: 1;
-}
-</style>
