@@ -134,8 +134,9 @@ function placementToSlot(p: CardPlacement): BinderSlotCard {
   return {
     name: p.card.name,
     set: p.card.set.toUpperCase(),
-    number: p.card.collector_number,
+    number: p.card.collector_number.padStart(4, '0'),
     color: cardMana(p.card),
+    multicolor: (p.card.color_identity?.length ?? 0) > 1,
     status: placementStatus(p),
     rarity: rarityShort(p.card.rarity),
     image: getCardImageUri(p.card, 'normal') ?? undefined

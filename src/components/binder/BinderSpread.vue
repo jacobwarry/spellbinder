@@ -12,10 +12,10 @@
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import { ChevronLeft, ChevronRight, LayoutGrid } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, LayoutGrid, X } from 'lucide-vue-next'
 import BinderSlot from './BinderSlot.vue'
-import { useBinderSpread, SPREAD_GEOMETRY } from '@/composables/useBinderSpread'
-import type { BinderSlotCard, Mana } from '@/components/common/types'
+import { useBinderSpread, SPREAD_GEOMETRY, SLOT_ASPECT } from '@/composables/useBinderSpread'
+import type { BinderSlotCard } from '@/components/common/types'
 
 const props = withDefaults(
   defineProps<{
@@ -38,7 +38,7 @@ const emit = defineEmits<{
   pageChange: [page: number]
 }>()
 
-const { GAP, PAD, GUTTER, ASPECT } = SPREAD_GEOMETRY
+const { GAP, PAD, GUTTER } = SPREAD_GEOMETRY
 
 const stageRef = ref<HTMLElement | null>(null)
 const { width: stageWidth, height: stageHeight } = useElementSize(stageRef)
@@ -57,7 +57,7 @@ watch(currentPage, (p) => emit('pageChange', p))
 
 // ---- page geometry (px) ----
 const pageHeight = computed(
-  () => geom.value.rows * cardPx.value * ASPECT + (geom.value.rows - 1) * GAP + 2 * PAD
+  () => geom.value.rows * cardPx.value * SLOT_ASPECT + (geom.value.rows - 1) * GAP + 2 * PAD
 )
 const pageWidth = computed(
   () => geom.value.cols * cardPx.value + (geom.value.cols - 1) * GAP + 2 * PAD
@@ -105,18 +105,10 @@ function slotsForPage(page: number): (BinderSlotCard | null)[] {
   return props.pages[page - 1] ?? []
 }
 
-// ---- navigation + turn animation ----
-const turnSeq = ref(0)
-const turnDir = ref(0)
-const animClass = computed(() => (turnDir.value > 0 ? 'anim-r' : turnDir.value < 0 ? 'anim-l' : ''))
-
+// ---- navigation ----
 function turn(dir: 1 | -1) {
   if (props.paused) return
-  const moved = go(dir)
-  if (moved) {
-    turnDir.value = moved
-    turnSeq.value++
-  }
+  go(dir)
 }
 
 function onKey(e: KeyboardEvent) {
@@ -160,8 +152,11 @@ function onPointerUp(e: PointerEvent) {
 
 // ---- overview ----
 const overviewOpen = ref(false)
-function manaVar(color: Mana) {
-  return `var(--mana-${color.toLowerCase()})`
+const MULTI_COLOR = '#d6ad55' // gold, for multicolor cards in thumbnails
+// Overview is an ownership heatmap: owned → card color, everything else → flat gray.
+function cellColor(card: BinderSlotCard): string {
+  if (card.status !== 'owned') return 'var(--missing)'
+  return card.multicolor ? MULTI_COLOR : `var(--mana-${card.color.toLowerCase()})`
 }
 function jumpTo(page: number) {
   goToPage(page)
@@ -240,9 +235,9 @@ function jumpTo(page: number) {
           <!-- a binder page -->
           <div
             v-else
-            :key="`page-${part.page}-${turnSeq}`"
+            :key="`page-${part.page}`"
             class="page border border-line-strong bg-(--paper) shadow-(--shadow-2)"
-            :class="[part.side === 'left' ? 'rounded-l-xl rounded-r' : part.side === 'right' ? 'rounded-l rounded-r-xl' : 'rounded-xl', animClass]"
+            :class="part.side === 'left' ? 'rounded-l-xl rounded-r' : part.side === 'right' ? 'rounded-l rounded-r-xl' : 'rounded-xl'"
           >
             <div class="grid" :style="gridStyle">
               <BinderSlot
@@ -258,21 +253,21 @@ function jumpTo(page: number) {
         </template>
       </div>
 
-      <!-- overview overlay -->
-      <div v-if="overviewOpen" class="absolute inset-0 z-20 overflow-y-auto bg-background p-5">
-        <div class="mx-auto max-w-275">
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="font-display text-xl font-bold">All pages</h2>
-            <button
-              type="button"
-              class="grid h-10 w-10 place-items-center rounded-md border border-line text-ink-soft outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Close overview"
-              @click="overviewOpen = false"
-            >
-              <ChevronLeft :size="18" />
-            </button>
-          </div>
-          <div class="grid gap-4" style="grid-template-columns: repeat(auto-fill, minmax(120px, 1fr))">
+      <!-- overview overlay: fixed header + internal-scroll grid -->
+      <div v-if="overviewOpen" class="absolute inset-0 z-20 flex flex-col bg-background">
+        <div class="flex shrink-0 items-center justify-between border-b border-line px-5 py-3">
+          <h2 class="font-display text-lg font-bold">All pages</h2>
+          <button
+            type="button"
+            class="grid h-9 w-9 place-items-center rounded-md border border-line text-ink-soft outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Close overview"
+            @click="overviewOpen = false"
+          >
+            <X :size="18" />
+          </button>
+        </div>
+        <div class="min-h-0 flex-1 overflow-y-auto p-5">
+          <div class="mx-auto grid max-w-275 gap-4" style="grid-template-columns: repeat(auto-fill, minmax(116px, 1fr))">
             <button
               v-for="p in pageCount"
               :key="p"
@@ -286,8 +281,8 @@ function jumpTo(page: number) {
                   v-for="(card, idx) in slotsForPage(p)"
                   :key="idx"
                   class="aspect-63/88 rounded-xs"
-                  :class="card ? (card.status !== 'owned' ? 'opacity-40' : '') : 'border border-dashed border-line-strong'"
-                  :style="card ? { background: manaVar(card.color) } : undefined"
+                  :class="card ? '' : 'border border-dashed border-line-strong'"
+                  :style="card ? { background: cellColor(card) } : undefined"
                 ></span>
               </div>
               <p class="mt-2 text-center text-xs font-semibold tabular-nums text-ink-soft">Page {{ p }}</p>
@@ -331,18 +326,5 @@ function jumpTo(page: number) {
 .page {
   padding: 0;
   position: relative;
-}
-@keyframes inRight {
-  from { transform: translateX(7%); opacity: 0; }
-  to { transform: none; opacity: 1; }
-}
-@keyframes inLeft {
-  from { transform: translateX(-7%); opacity: 0; }
-  to { transform: none; opacity: 1; }
-}
-.anim-r { animation: inRight 0.26s cubic-bezier(0.22, 0.61, 0.36, 1); }
-.anim-l { animation: inLeft 0.26s cubic-bezier(0.22, 0.61, 0.36, 1); }
-@media (prefers-reduced-motion: reduce) {
-  .anim-r, .anim-l { animation: none; }
 }
 </style>

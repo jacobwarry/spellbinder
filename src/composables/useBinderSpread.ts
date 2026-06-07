@@ -19,12 +19,16 @@ export const SPREAD_GEOMETRY = {
   PAD: 10, // page padding (px)
   GUTTER: 28, // spine width between the two open pages (px)
   ASPECT: 88 / 63, // card height / width
+  FOOTER_RATIO: 1 / 10, // set·rarity·№ label band below each card, as a fraction of card width (matches aspect-10/1)
   MIN_SPREAD_CARD: 84, // card-readability floor for choosing a spread
   MIN_CARD: 58, // clamp floor for the rendered card size
   MAX_CARD: 210, // clamp ceiling
   MIN_SPREAD_WIDTH: 620, // a spread also needs real horizontal room
   STAGE_INSET: 24 // stage padding subtracted from the measured size
 } as const
+
+/** Total slot height as a fraction of card width = card + footer strip. */
+export const SLOT_ASPECT = SPREAD_GEOMETRY.ASPECT + SPREAD_GEOMETRY.FOOTER_RATIO
 
 export type BinderLayout = 'spread' | 'single'
 
@@ -77,7 +81,7 @@ export interface LayoutDecision {
  */
 export function decideLayout(stageW: number, stageH: number, geom: BinderGeometry): LayoutDecision {
   const {
-    GAP, PAD, GUTTER, ASPECT,
+    GAP, PAD, GUTTER,
     MIN_SPREAD_CARD, MIN_CARD, MAX_CARD, MIN_SPREAD_WIDTH, STAGE_INSET
   } = SPREAD_GEOMETRY
   const { cols, rows } = geom
@@ -85,7 +89,9 @@ export function decideLayout(stageW: number, stageH: number, geom: BinderGeometr
   const sw = stageW - STAGE_INSET
   const sh = stageH - STAGE_INSET
 
-  const heightCard = (sh - (rows - 1) * GAP - 2 * PAD) / (rows * ASPECT)
+  // Each slot is card + footer strip tall (SLOT_ASPECT), so the height budget
+  // must account for the footer or cards would overflow vertically.
+  const heightCard = (sh - (rows - 1) * GAP - 2 * PAD) / (rows * SLOT_ASPECT)
 
   // Single page: the full stage width holds one page.
   const singleWidthCard = (sw - (cols - 1) * GAP - 2 * PAD) / cols

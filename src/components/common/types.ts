@@ -12,4 +12,6 @@ export interface BinderSlotCard {
   status: Ownership
   rarity?: string
   image?: string
+  /** True for multicolor cards (shown gold rather than the single-color art/thumbnail). */
+  multicolor?: boolean
 }

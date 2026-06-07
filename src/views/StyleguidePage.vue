@@ -51,7 +51,7 @@ const binderPages: (BinderSlotCard | null)[][] = Array.from({ length: 6 }, (_, p
     return {
       name: demoNames[i % 6]!,
       set: demoSets[i % 6]!,
-      number: String(((i * 13) % 320) + 1).padStart(3, '0'),
+      number: String(((i * 13) % 320) + 1).padStart(4, '0'),
       color: demoColors[i % 6]!,
       status: demoStatuses[i % 3]!,
       rarity: ['C', 'U', 'R', 'M'][i % 4]!

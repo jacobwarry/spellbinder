@@ -20,53 +20,71 @@ const ART: Record<Mana, string> = {
   W: 'radial-gradient(circle at 50% 28%,#f6ecc4,#cdb478)',
   C: 'radial-gradient(circle at 50% 28%,#c3bdd2,#797295)'
 }
+const MULTI_ART = 'radial-gradient(circle at 50% 28%,#ecce7e,#9c7b25)'
 </script>
 
 <template>
   <button
     v-if="card"
-    class="relative block aspect-63/88 overflow-hidden rounded-lg outline-none transition-transform active:scale-[.97] focus-visible:ring-2 focus-visible:ring-ring"
-    :class="card.status !== 'owned' && 'grayscale brightness-90'"
+    class="group block cursor-pointer rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
     :aria-label="`${card.name}, ${card.set} ${card.number}, ${card.status}. Slot ${slotNumber}. Open actions.`"
     @click="$emit('select')"
   >
-    <img v-if="card.image" :src="card.image" :alt="card.name" loading="lazy" class="absolute inset-0 h-full w-full object-cover" />
-    <div v-else class="absolute inset-0" :style="{ background: ART[card.color] }"></div>
-    <div class="absolute inset-x-0 bottom-0 h-2/5" style="background:linear-gradient(transparent,rgba(0,0,0,.6))"></div>
+    <!-- The card = image + an attached label band, one rounded unit. -->
+    <div class="overflow-hidden rounded-[4px] transition-transform group-active:scale-[.97]">
+      <div class="relative aspect-63/88 bg-surface-2">
+        <!-- missing → faded + desaturated; skipped → desaturated/darkened (corner ✕ distinguishes it) -->
+        <div
+          class="absolute inset-0"
+          :class="{
+            'opacity-40 grayscale': card.status === 'missing',
+            'grayscale brightness-90': card.status === 'skipped'
+          }"
+        >
+          <img v-if="card.image" :src="card.image" :alt="card.name" loading="lazy" class="absolute inset-0 h-full w-full object-cover" />
+          <div v-else class="absolute inset-0" :style="{ background: card.multicolor ? MULTI_ART : ART[card.color] }"></div>
+          <span
+            v-if="!card.image"
+            class="absolute inset-x-1.5 top-1.5 line-clamp-2 text-[10px] font-bold leading-tight text-white"
+            style="text-shadow:0 1px 2px rgba(0,0,0,.6)"
+          >{{ card.name }}</span>
+        </div>
 
-    <span
-      v-if="!card.image"
-      class="absolute left-1.5 right-1.5 top-1.5 line-clamp-2 text-[10px] font-bold leading-tight text-white"
-      style="text-shadow:0 1px 2px rgba(0,0,0,.6)"
-    >{{ card.name }}</span>
+        <!-- ownership corner indicator (kept crisp, outside the fade wrapper) -->
+        <span
+          v-if="card.status === 'owned'"
+          class="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full text-[#06210f]"
+          style="background:var(--owned)"
+        ><Check :size="10" :stroke-width="3.5" /></span>
+        <span
+          v-else-if="card.status === 'skipped'"
+          class="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full text-[#2a0c08]"
+          style="background:var(--skipped)"
+        ><X :size="10" :stroke-width="3.5" /></span>
+      </div>
 
-    <span
-      class="absolute left-1.5 right-1.5 bottom-1 flex justify-between gap-1 text-[9px] font-semibold text-white/90 tabular-nums"
-      style="text-shadow:0 1px 2px rgba(0,0,0,.7)"
-    >
-      <span class="truncate">{{ card.set }}<template v-if="card.rarity"> {{ card.rarity }}</template></span>
-      <span>{{ card.number }}</span>
-    </span>
-
-    <span
-      v-if="card.status === 'owned'"
-      class="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full text-[#06210f]"
-      style="background:var(--owned)"
-    ><Check :size="10" :stroke-width="3.5" /></span>
-    <span
-      v-else-if="card.status === 'skipped'"
-      class="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full text-[#2a0c08]"
-      style="background:var(--skipped)"
-    ><X :size="10" :stroke-width="3.5" /></span>
+      <!-- label band tacked onto the bottom of the card -->
+      <div
+        class="flex aspect-10/1 items-center justify-between gap-1 px-3 text-[9px] font-semibold tabular-nums"
+        style="background:#100c18;color:rgba(255,255,255,.88)"
+      >
+        <span class="truncate">{{ card.set }}<template v-if="card.rarity"> · {{ card.rarity }}</template></span>
+        <span class="shrink-0">{{ card.number }}</span>
+      </div>
+    </div>
   </button>
 
   <button
     v-else
-    class="relative grid aspect-63/88 place-items-center rounded-lg border-[1.5px] border-dashed border-line-strong bg-surface-2 text-ink-faint outline-none transition-colors hover:border-brand hover:text-brand focus-visible:ring-2 focus-visible:ring-ring"
+    class="block cursor-pointer outline-none focus-visible:rounded-[4px] focus-visible:ring-2 focus-visible:ring-ring"
     :aria-label="`Empty slot ${slotNumber}. Add a card.`"
     @click="$emit('insert')"
   >
-    <span class="absolute left-1.5 top-1 text-[10px] font-semibold">{{ slotNumber }}</span>
-    <Plus :size="18" class="opacity-60" />
+    <div class="relative grid aspect-63/88 place-items-center rounded-[4px] border-[1.5px] border-dashed border-line-strong bg-surface-2 text-ink-faint transition-colors hover:border-brand hover:text-brand">
+      <span class="absolute left-1.5 top-1 text-[10px] font-semibold">{{ slotNumber }}</span>
+      <Plus :size="18" class="opacity-60" />
+    </div>
+    <!-- spacer keeps empty slots the same height as filled ones -->
+    <div class="aspect-10/1" aria-hidden="true"></div>
   </button>
 </template>
