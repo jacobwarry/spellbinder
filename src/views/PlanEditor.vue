@@ -2,13 +2,16 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ScryfallSet, ScryfallCard, BinderPlan, Binder, Segment } from '@/types'
-import { getPlacementOwnershipKey } from '@/types/placement'
+import { getPlacementOwnershipKey, type CardPlacement } from '@/types/placement'
+import { getCardImageUri } from '@/api/scryfall'
 import { useBindersStore, useSegmentsStore, usePlansStore, useCollectionStore } from '@/stores'
 import { calculatePlacements, type PlacementResult } from '@/composables/usePlacement'
 import { useAllPlacements, buildBinderStats } from '@/composables/useAllPlacements'
+import type { Mana, Ownership, BinderSlotCard } from '@/components/common/types'
 import BinderCard from '@/components/binder/BinderCard.vue'
 import BinderForm from '@/components/binder/BinderForm.vue'
-import BinderPageGrid from '@/components/binder/BinderPageGrid.vue'
+import BinderSpread from '@/components/binder/BinderSpread.vue'
+import CardActionSheet from '@/components/binder/CardActionSheet.vue'
 import BoxCardList from '@/components/binder/BoxCardList.vue'
 import SegmentCard from '@/components/segments/SegmentCard.vue'
 import SetSelector from '@/components/sets/SetSelector.vue'
@@ -45,11 +48,7 @@ const selectedBinderForView = ref<string | null>(null)
 const selectedPage = ref(1)
 const editingPlanName = ref(false)
 const planNameInput = ref('')
-const isSpreadView = ref(false)
-const SPREAD_VIEW_MIN_WIDTH = 1200
 const showCardSearch = ref(false)
-const ZOOM_STORAGE_KEY = 'spellbinder-zoom-level'
-const zoomLevel = ref(parseInt(localStorage.getItem(ZOOM_STORAGE_KEY) || '100', 10)) // Percentage zoom level
 const insertTargetSlot = ref<{
   binderId: string
   pageNumber: number
@@ -117,46 +116,113 @@ const currentBinderPlacements = computed(() => {
   return placementResult.value.placements.filter(p => p.binderId === viewingBinder.value!.id)
 })
 
-const currentPagePlacements = computed(() => {
-  if (!placementResult.value || !selectedBinderForView.value) return []
-  // In spread view, show the left page (even pages on left)
-  const pageToShow = isSpreadView.value && leftPageNumber.value ? leftPageNumber.value : selectedPage.value
-  return placementResult.value.placements.filter(
-    p => p.binderId === selectedBinderForView.value && p.pageNumber === pageToShow
-  )
+// ---- Binder viewer: card → slot mapping + the pages matrix (P10) ----
+const MANA_BY_LETTER: Record<string, Mana> = { W: 'W', U: 'U', B: 'B', R: 'R', G: 'G' }
+function cardMana(card: ScryfallCard): Mana {
+  const ci = card.color_identity ?? []
+  return ci.length === 1 ? (MANA_BY_LETTER[ci[0]!] ?? 'C') : 'C'
+}
+const RARITY_SHORT: Record<string, string> = { common: 'C', uncommon: 'U', rare: 'R', mythic: 'M' }
+function rarityShort(r: string): string {
+  return RARITY_SHORT[r.toLowerCase()] ?? r.charAt(0).toUpperCase()
+}
+function placementStatus(p: CardPlacement): Ownership {
+  const key = getPlacementOwnershipKey(p)
+  return collectionStore.isOwned(key) ? 'owned' : collectionStore.isSkipped(key) ? 'skipped' : 'missing'
+}
+function placementToSlot(p: CardPlacement): BinderSlotCard {
+  return {
+    name: p.card.name,
+    set: p.card.set.toUpperCase(),
+    number: p.card.collector_number,
+    color: cardMana(p.card),
+    status: placementStatus(p),
+    rarity: rarityShort(p.card.rarity),
+    image: getCardImageUri(p.card, 'normal') ?? undefined
+  }
+}
+
+// pages[pageIndex][slotIndex] = slot card (or null) + a lookup back to the placement.
+interface BinderLayout { pages: (BinderSlotCard | null)[][]; meta: Map<string, CardPlacement> }
+const binderLayout = computed<BinderLayout | null>(() => {
+  const binder = viewingBinder.value
+  if (!binder || binder.type !== 'binder') return null
+  const spp = binder.slotsPerPage
+  const pages: (BinderSlotCard | null)[][] = Array.from({ length: binder.pageCount }, () => Array(spp).fill(null))
+  const meta = new Map<string, CardPlacement>()
+  for (const p of currentBinderPlacements.value) {
+    const slot0 = p.slotOnPage - 1
+    if (p.pageNumber < 1 || p.pageNumber > binder.pageCount || slot0 < 0 || slot0 >= spp) continue
+    pages[p.pageNumber - 1]![slot0] = placementToSlot(p)
+    meta.set(`${p.pageNumber}:${slot0}`, p)
+  }
+  return { pages, meta }
+})
+const viewingBinderPages = computed(() => binderLayout.value?.pages ?? [])
+
+// ---- Card action sheet (keyed by segment+index so it survives recalcs) ----
+const sheetOpen = ref(false)
+const sheetRef = ref<{ segmentId: string; cardIndex: number } | null>(null)
+const sheetPlacement = computed<CardPlacement | null>(() => {
+  const r = sheetRef.value
+  if (!r) return null
+  return currentBinderPlacements.value.find(
+    p => p.segmentId === r.segmentId && p.cardIndexInSegment === r.cardIndex
+  ) ?? null
+})
+const sheetCard = computed(() => {
+  const p = sheetPlacement.value
+  if (!p) return null
+  return {
+    ...placementToSlot(p),
+    spacerCount: segmentsStore.getSpacerCount(p.segmentId, p.cardIndexInSegment),
+    location: `Page ${p.pageNumber} · Slot ${p.slotOnPage}`
+  }
 })
 
-const leftPageNumber = computed(() => {
-  if (!viewingBinder.value) return null
-  if (!isSpreadView.value) return null
-  // Page 1 is always alone (front of binder)
-  if (selectedPage.value === 1) return selectedPage.value
-  // For spreads: even pages go on left, odd pages go on right
-  // If we're on an even page, it's already the left page
-  // If we're on an odd page, show the previous (even) page as left
-  return selectedPage.value % 2 === 0 ? selectedPage.value : selectedPage.value - 1
-})
+// Suspend binder-spread nav (arrows/swipe) while any editor modal/sheet is open.
+const anyModalOpen = computed(() =>
+  sheetOpen.value || showCardSearch.value || showSetSelector.value || !!selectedSet.value ||
+  showBoxCardSelector.value || !!selectedSetForBox.value || showBinderForm.value || showNewSetDialog.value
+)
 
-const rightPageNumber = computed(() => {
-  if (!viewingBinder.value) return null
-  if (viewingBinder.value.type === 'box') return null  // Boxes don't have pages
-  if (!isSpreadView.value) return null
-  // Page 1 is always alone (front of binder)
-  if (selectedPage.value === 1) return null
-  // For spreads: even pages go on left, odd pages go on right
-  // Calculate the right page (odd) for this spread
-  const leftPage = leftPageNumber.value
-  if (leftPage === null) return null
-  const rightPage = leftPage + 1
-  return rightPage <= viewingBinder.value.pageCount ? rightPage : null
-})
-
-const rightPagePlacements = computed(() => {
-  if (!placementResult.value || !selectedBinderForView.value || !rightPageNumber.value) return []
-  return placementResult.value.placements.filter(
-    p => p.binderId === selectedBinderForView.value && p.pageNumber === rightPageNumber.value
-  )
-})
+function onBinderSlotSelect(page: number, slot0: number) {
+  const p = binderLayout.value?.meta.get(`${page}:${slot0}`)
+  if (!p) return
+  sheetRef.value = { segmentId: p.segmentId, cardIndex: p.cardIndexInSegment }
+  sheetOpen.value = true
+}
+function onBinderSlotInsert(page: number, slot0: number) {
+  handleInsertCard(page, slot0 + 1)
+}
+function onSheetToggleOwned() {
+  const p = sheetPlacement.value
+  if (p) collectionStore.toggleOwned(getPlacementOwnershipKey(p))
+}
+function onSheetToggleSkipped() {
+  const p = sheetPlacement.value
+  if (p) collectionStore.toggleSkipped(getPlacementOwnershipKey(p))
+}
+async function onSheetAddSpacer() {
+  const p = sheetPlacement.value
+  if (p) await handleAddSpacer(p.segmentId, p.cardIndexInSegment)
+}
+async function onSheetRemoveSpacer() {
+  const p = sheetPlacement.value
+  if (p) await handleRemoveSpacer(p.segmentId, p.cardIndexInSegment)
+}
+function onSheetScryfall() {
+  const p = sheetPlacement.value
+  if (p) window.open(`https://scryfall.com/search?q=${encodeURIComponent(p.card.name)}`, '_blank', 'noopener')
+}
+async function onSheetRemove() {
+  const p = sheetPlacement.value
+  if (!p) return
+  const target = { segmentId: p.segmentId, cardIndex: p.cardIndexInSegment }
+  sheetOpen.value = false
+  sheetRef.value = null
+  await handleRemoveCard(target.segmentId, target.cardIndex)
+}
 
 const totalOverflowCount = computed(() => {
   if (!placementResult.value) return 0
@@ -195,47 +261,6 @@ const allBinderCardsOwned = computed(() =>
   currentBinderPlacementKeys.value.length > 0 &&
   currentBinderPlacementKeys.value.every(key => collectionStore.isOwned(key))
 )
-
-function getPageCardRange(placements: typeof currentPagePlacements.value): string {
-  if (placements.length === 0) return ''
-
-  // Group placements by set code
-  const setGroups = new Map<string, { min: string; max: string }>()
-
-  for (const placement of placements) {
-    const setCode = placement.card.set.toUpperCase()
-    const collectorNumber = placement.card.collector_number
-
-    if (!setGroups.has(setCode)) {
-      setGroups.set(setCode, { min: collectorNumber, max: collectorNumber })
-    } else {
-      const group = setGroups.get(setCode)!
-      // Compare as strings, but pad with zeros for proper comparison
-      const padNum = (num: string) => num.padStart(4, '0')
-      if (padNum(collectorNumber) < padNum(group.min)) {
-        group.min = collectorNumber
-      }
-      if (padNum(collectorNumber) > padNum(group.max)) {
-        group.max = collectorNumber
-      }
-    }
-  }
-
-  // Format ranges for each set with zero-padded collector numbers
-  const padCollectorNumber = (num: string) => num.padStart(4, '0')
-  const ranges = Array.from(setGroups.entries()).map(([setCode, { min, max }]) => {
-    if (min === max) {
-      return `${setCode} ${padCollectorNumber(min)}`
-    }
-    return `${setCode} ${padCollectorNumber(min)} - ${padCollectorNumber(max)}`
-  })
-
-  return ranges.join(', ')
-}
-
-const currentPageCardRange = computed(() => getPageCardRange(currentPagePlacements.value))
-
-const rightPageCardRange = computed(() => getPageCardRange(rightPagePlacements.value))
 
 function toggleAllBinderOwned() {
   if (currentBinderPlacementKeys.value.length === 0) return
@@ -478,10 +503,6 @@ async function handleRemoveCard(segmentId: string, cardIndex: number) {
   }
 }
 
-function getSpacerCount(segmentId: string, cardIndex: number): number {
-  return segmentsStore.getSpacerCount(segmentId, cardIndex)
-}
-
 async function handleAddSpacer(segmentId: string, cardIndex: number) {
   segmentsStore.addSpacerBefore(segmentId, cardIndex)
   await nextTick()
@@ -588,26 +609,6 @@ function cancelCardSearch() {
   insertTargetSlot.value = null
 }
 
-// Zoom controls
-const zoomLevels = [75, 90, 100, 110, 125, 150]
-const currentZoomIndex = computed(() => {
-  const index = zoomLevels.indexOf(zoomLevel.value)
-  return index >= 0 ? index : 2 // Default to 100%
-})
-
-function zoomIn() {
-  const nextIndex = Math.min(currentZoomIndex.value + 1, zoomLevels.length - 1)
-  zoomLevel.value = zoomLevels[nextIndex] ?? 100
-}
-
-function zoomOut() {
-  const prevIndex = Math.max(currentZoomIndex.value - 1, 0)
-  zoomLevel.value = zoomLevels[prevIndex] ?? 100
-}
-
-const canZoomIn = computed(() => currentZoomIndex.value < zoomLevels.length - 1)
-const canZoomOut = computed(() => currentZoomIndex.value > 0)
-
 function viewBinder(binderId: string) {
   selectedBinderForView.value = binderId
   selectedPage.value = 1
@@ -626,132 +627,6 @@ function deletePlan() {
 function addBinderForOverflow() {
   showBinderForm.value = true
   editingBinder.value = null
-}
-
-function goToPrevPage() {
-  if (isSpreadView.value) {
-    // In spread view: from page 2 go to 1, otherwise subtract 2
-    if (selectedPage.value === 2) {
-      selectedPage.value = 1
-    } else if (selectedPage.value > 2) {
-      selectedPage.value -= 2
-    }
-  } else {
-    if (selectedPage.value > 1) {
-      selectedPage.value--
-    }
-  }
-}
-
-function goToNextPage() {
-  if (!viewingBinder.value || viewingBinder.value.type === 'box') return
-  const maxPage = viewingBinder.value.pageCount
-
-  if (isSpreadView.value) {
-    // In spread view: from page 1 go to 2, otherwise add 2
-    if (selectedPage.value === 1) {
-      if (maxPage >= 2) selectedPage.value = 2
-    } else {
-      const nextPos = selectedPage.value + 2
-      if (nextPos <= maxPage) {
-        selectedPage.value = nextPos
-      }
-    }
-  } else {
-    if (selectedPage.value < maxPage) {
-      selectedPage.value++
-    }
-  }
-}
-
-const isFirstPageOfBinder = computed(() => selectedPage.value <= 1)
-
-const isLastPageOfBinder = computed(() => {
-  if (!viewingBinder.value || viewingBinder.value.type === 'box') return true
-  const maxPage = viewingBinder.value.pageCount
-
-  if (isSpreadView.value) {
-    if (selectedPage.value === 1) {
-      // On page 1, only last if there's just 1 page
-      return maxPage === 1
-    }
-    // On an even page, check if next spread position would be valid
-    // Next position would be selectedPage + 2
-    return selectedPage.value + 2 > maxPage
-  }
-  return selectedPage.value >= maxPage
-})
-
-const currentBinderIndex = computed(() => {
-  return planBinders.value.findIndex(b => b.id === selectedBinderForView.value)
-})
-
-const hasPrevBinder = computed(() => currentBinderIndex.value > 0)
-
-const hasNextBinder = computed(() => currentBinderIndex.value < planBinders.value.length - 1)
-
-function goToPrevBinder() {
-  if (hasPrevBinder.value) {
-    const prevBinder = planBinders.value[currentBinderIndex.value - 1]
-    if (prevBinder) {
-      selectedBinderForView.value = prevBinder.id
-      const binder = bindersStore.getBinder(prevBinder.id)
-      selectedPage.value = (binder?.type === 'binder' ? binder.pageCount : 1)
-    }
-  }
-}
-
-function goToNextBinder() {
-  if (hasNextBinder.value) {
-    const nextBinder = planBinders.value[currentBinderIndex.value + 1]
-    if (nextBinder) {
-      selectedBinderForView.value = nextBinder.id
-      selectedPage.value = 1
-    }
-  }
-}
-
-const totalPages = computed(() => {
-  return planBinders.value.reduce((sum, b) => sum + (b.type === 'binder' ? b.pageCount : 0), 0)
-})
-
-const globalPagePosition = computed(() => {
-  if (!selectedBinderForView.value) return 0
-  const currentIndex = planBinders.value.findIndex(b => b.id === selectedBinderForView.value)
-  let position = selectedPage.value
-  for (let i = 0; i < currentIndex; i++) {
-    const binder = planBinders.value[i]
-    if (binder && binder.type === 'binder') position += binder.pageCount
-  }
-  return position
-})
-
-function goToFirstPage() {
-  selectedPage.value = 1
-}
-
-function getLastSpreadPosition(pageCount: number): number {
-  if (!isSpreadView.value) return pageCount
-  if (pageCount <= 1) return 1
-  // For even pageCount, last position shows that page alone
-  // For odd pageCount, last position is pageCount - 1 (spread ending with last page)
-  return pageCount % 2 === 0 ? pageCount : pageCount - 1
-}
-
-function goToLastPage() {
-  if (viewingBinder.value && viewingBinder.value.type === 'binder') {
-    selectedPage.value = getLastSpreadPosition(viewingBinder.value.pageCount)
-  }
-}
-
-function handlePageInput(event: Event) {
-  const input = event.target as HTMLInputElement
-  const page = parseInt(input.value, 10)
-  if (viewingBinder.value && viewingBinder.value.type === 'binder' && page >= 1 && page <= viewingBinder.value.pageCount) {
-    selectedPage.value = page
-  } else {
-    input.value = String(selectedPage.value)
-  }
 }
 
 function cancelCardPicker() {
@@ -806,104 +681,8 @@ function handleKeyDown(event: KeyboardEvent) {
       return
     }
   }
-
-  if (!viewingBinder.value || !placementResult.value) return
-  if (viewingBinder.value.type === 'box') return  // Keyboard nav only for binders
-
-  const target = event.target as HTMLElement
-  if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') {
-    return
-  }
-
-  if (event.key === 'ArrowLeft') {
-    event.preventDefault()
-    if (isSpreadView.value) {
-      // Spread view navigation: 1 <- 2 <- 4 <- 6 <- ...
-      if (selectedPage.value === 2) {
-        selectedPage.value = 1
-      } else if (selectedPage.value > 2) {
-        selectedPage.value -= 2
-      } else if (hasPrevBinder.value) {
-        // On page 1, go to previous binder's last spread position
-        const prevBinder = planBinders.value[currentBinderIndex.value - 1]
-        if (prevBinder) {
-          selectedBinderForView.value = prevBinder.id
-          const binder = bindersStore.getBinder(prevBinder.id)
-          const lastPage = (binder?.type === 'binder' ? binder.pageCount : 1)
-          selectedPage.value = getLastSpreadPosition(lastPage)
-        }
-      }
-    } else {
-      if (selectedPage.value > 1) {
-        selectedPage.value--
-      } else if (hasPrevBinder.value) {
-        const prevBinder = planBinders.value[currentBinderIndex.value - 1]
-        if (prevBinder) {
-          selectedBinderForView.value = prevBinder.id
-          const binder = bindersStore.getBinder(prevBinder.id)
-          selectedPage.value = (binder?.type === 'binder' ? binder.pageCount : 1)
-        }
-      }
-    }
-  } else if (event.key === 'ArrowRight') {
-    event.preventDefault()
-    const maxPage = viewingBinder.value.pageCount
-
-    if (isSpreadView.value) {
-      // Spread view navigation: 1 -> 2 -> 4 -> 6 -> ...
-      if (selectedPage.value === 1) {
-        if (maxPage >= 2) {
-          selectedPage.value = 2
-        } else if (hasNextBinder.value) {
-          const nextBinder = planBinders.value[currentBinderIndex.value + 1]
-          if (nextBinder) {
-            selectedBinderForView.value = nextBinder.id
-            selectedPage.value = 1
-          }
-        }
-      } else {
-        const nextPos = selectedPage.value + 2
-        if (nextPos <= maxPage) {
-          selectedPage.value = nextPos
-        } else if (hasNextBinder.value) {
-          const nextBinder = planBinders.value[currentBinderIndex.value + 1]
-          if (nextBinder) {
-            selectedBinderForView.value = nextBinder.id
-            selectedPage.value = 1
-          }
-        }
-      }
-    } else {
-      if (selectedPage.value < maxPage) {
-        selectedPage.value++
-      } else if (hasNextBinder.value) {
-        const nextBinder = planBinders.value[currentBinderIndex.value + 1]
-        if (nextBinder) {
-          selectedBinderForView.value = nextBinder.id
-          selectedPage.value = 1
-        }
-      }
-    }
-  } else if (event.key === ' ') {
-    event.preventDefault()
-    // In spread view, toggle both pages (but page 1 is alone)
-    const leftKeys = currentPagePlacements.value.map(p => getPlacementOwnershipKey(p))
-    const rightKeys = isSpreadView.value && rightPageNumber.value ? rightPagePlacements.value.map(p => getPlacementOwnershipKey(p)) : []
-    const pageKeys = [...leftKeys, ...rightKeys]
-    if (pageKeys.length === 0) return
-    const allOwned = pageKeys.every(key => collectionStore.isOwned(key))
-    collectionStore.setMultipleOwned(pageKeys, !allOwned)
-  }
+  // Page-turn arrows/space are owned by BinderSpread now.
 }
-
-function updateSpreadView() {
-  isSpreadView.value = window.innerWidth >= SPREAD_VIEW_MIN_WIDTH
-}
-
-// Persist zoom level to localStorage
-watch(zoomLevel, (newZoom) => {
-  localStorage.setItem(ZOOM_STORAGE_KEY, String(newZoom))
-})
 
 // Handle Escape key to close New Set dialog
 function handleNewSetDialogKeydown(event: KeyboardEvent) {
@@ -923,8 +702,6 @@ watch(showNewSetDialog, (isOpen) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
-  window.addEventListener('resize', updateSpreadView)
-  updateSpreadView()
 
   // Check if we should auto-open the create dialog
   if (route.query.create === 'true') {
@@ -936,7 +713,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)
-  window.removeEventListener('resize', updateSpreadView)
 })
 </script>
 
@@ -1163,174 +939,59 @@ onUnmounted(() => {
       </template>
 
       <template v-else-if="viewingBinder">
-        <div class="storage-view">
-          <div class="storage-view-header">
-            <div class="binder-selector">
-              <label>Storage:</label>
-              <select v-model="selectedBinderForView" @change="selectedPage = 1">
+        <div class="flex h-[calc(100dvh-6rem)] flex-col gap-3">
+          <!-- slim header: storage picker + bulk/box action -->
+          <div class="flex shrink-0 flex-wrap items-center gap-3">
+            <label class="flex items-center gap-2 text-sm">
+              <span class="text-ink-soft">Storage</span>
+              <select
+                v-model="selectedBinderForView"
+                class="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                @change="selectedPage = 1"
+              >
                 <option v-for="binder in planBinders" :key="binder.id" :value="binder.id">
                   {{ binder.name }}
                 </option>
               </select>
-            </div>
-            <div class="zoom-controls">
-              <button
-                @click="zoomOut"
-                :disabled="!canZoomOut"
-                class="btn btn-small btn-icon"
-                title="Zoom out"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8"/>
-                  <path d="m21 21-4.35-4.35"/>
-                  <line x1="8" y1="11" x2="14" y2="11"/>
-                </svg>
-              </button>
-              <span class="zoom-level">{{ zoomLevel }}%</span>
-              <button
-                @click="zoomIn"
-                :disabled="!canZoomIn"
-                class="btn btn-small btn-icon"
-                title="Zoom in"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8"/>
-                  <path d="m21 21-4.35-4.35"/>
-                  <line x1="11" y1="8" x2="11" y2="14"/>
-                  <line x1="8" y1="11" x2="14" y2="11"/>
-                </svg>
-              </button>
-            </div>
-            <button
+            </label>
+            <div class="flex-1"></div>
+            <Button
               v-if="viewingBinder.type === 'binder'"
+              size="sm"
+              :variant="allBinderCardsOwned ? 'secondary' : 'default'"
               @click="toggleAllBinderOwned"
-              class="btn btn-small"
-              :class="allBinderCardsOwned ? 'btn-secondary' : 'btn-primary'"
             >
               {{ allBinderCardsOwned ? 'Mark binder unowned' : 'Mark binder owned' }}
-            </button>
-            <button
-              v-if="viewingBinder.type === 'box'"
-              @click="showBoxCardSelector = true"
-              class="btn btn-primary btn-small"
-            >
-              + Add Cards
-            </button>
+            </Button>
+            <Button v-if="viewingBinder.type === 'box'" size="sm" @click="showBoxCardSelector = true">
+              <Plus :size="16" /> Add cards
+            </Button>
           </div>
 
-          <!-- Binder page grid view -->
-          <template v-if="viewingBinder.type === 'binder'">
-            <div class="page-spread" :class="{ 'spread-view': isSpreadView }">
-              <div class="page-wrapper">
-                <div class="page-label">
-                  Page {{ isSpreadView && leftPageNumber ? leftPageNumber : selectedPage }}
-                  <span v-if="currentPageCardRange" class="card-range">{{ currentPageCardRange }}</span>
-                </div>
-                <BinderPageGrid
-                  :placements="currentPagePlacements"
-                  :slots-per-page="viewingBinder.slotsPerPage"
-                  :page-number="isSpreadView && leftPageNumber ? leftPageNumber : selectedPage"
-                  :get-spacer-count="getSpacerCount"
-                  :zoom-level="zoomLevel"
-                  @remove-card="handleRemoveCard"
-                  @add-spacer="handleAddSpacer"
-                  @remove-spacer="handleRemoveSpacer"
-                  @insert-card="handleInsertCard"
-                />
-              </div>
-              <div v-if="isSpreadView && rightPageNumber" class="page-wrapper">
-                <div class="page-label">
-                  Page {{ rightPageNumber }}
-                  <span v-if="rightPageCardRange" class="card-range">{{ rightPageCardRange }}</span>
-                </div>
-                <BinderPageGrid
-                  :placements="rightPagePlacements"
-                  :slots-per-page="viewingBinder.slotsPerPage"
-                  :page-number="rightPageNumber"
-                  :get-spacer-count="getSpacerCount"
-                  :zoom-level="zoomLevel"
-                  @remove-card="handleRemoveCard"
-                  @add-spacer="handleAddSpacer"
-                  @remove-spacer="handleRemoveSpacer"
-                  @insert-card="handleInsertCard"
-                />
-              </div>
-            </div>
-            <div class="pagination">
-            <button
-              @click="goToFirstPage"
-              :disabled="isFirstPageOfBinder"
-              class="btn btn-small"
-              title="First page of binder"
-            >
-              ««
-            </button>
-            <button
-              @click="goToPrevPage"
-              :disabled="isFirstPageOfBinder"
-              class="btn btn-small"
-              title="Previous page"
-            >
-              «
-            </button>
-            <div class="page-input-group">
-              <input
-                type="number"
-                :value="selectedPage"
-                @change="handlePageInput"
-                :min="1"
-                :max="viewingBinder.pageCount"
-                class="page-input"
-              />
-              <span v-if="isSpreadView && rightPageNumber" class="page-range">-{{ rightPageNumber }}</span>
-              <span class="page-total">/ {{ viewingBinder.pageCount }}</span>
-            </div>
-            <button
-              @click="goToNextPage"
-              :disabled="isLastPageOfBinder"
-              class="btn btn-small"
-              title="Next page"
-            >
-              »
-            </button>
-            <button
-              @click="goToLastPage"
-              :disabled="isLastPageOfBinder"
-              class="btn btn-small"
-              title="Last page of binder"
-            >
-              »»
-            </button>
-            <span class="global-position">
-              ({{ globalPagePosition }} / {{ totalPages }} total)
-            </span>
-          </div>
-          </template>
-
-          <!-- Box list view -->
-          <template v-else-if="viewingBinder.type === 'box'">
-            <div class="box-view-title">
-              <h2>{{ viewingBinder.name }}</h2>
-            </div>
-            <div v-if="currentBinderPlacements.length === 0" class="empty-box-message">
-              <p>This box is empty. Click the "+ Add Cards" button above to add cards from a set.</p>
-            </div>
-            <BoxCardList
-              v-else
-              :placements="currentBinderPlacements"
-              :zoom="zoomLevel"
+          <!-- Binder viewer (fit-to-viewport spread) -->
+          <div
+            v-if="viewingBinder.type === 'binder'"
+            class="min-h-0 flex-1 overflow-hidden rounded-lg border border-line bg-surface"
+          >
+            <BinderSpread
+              :key="viewingBinder.id"
+              :name="viewingBinder.name"
+              :page-count="viewingBinder.pageCount"
+              :slots-per-page="viewingBinder.slotsPerPage"
+              :pages="viewingBinderPages"
+              :initial-page="selectedPage"
+              :paused="anyModalOpen"
+              @select="onBinderSlotSelect"
+              @insert="onBinderSlotInsert"
             />
-          </template>
-
-          <div v-if="isFirstPageOfBinder && hasPrevBinder" class="binder-nav binder-nav-prev">
-            <button @click="goToPrevBinder" class="btn btn-secondary btn-small">
-              ← Previous binder
-            </button>
           </div>
-          <div v-if="isLastPageOfBinder && hasNextBinder" class="binder-nav binder-nav-next">
-            <button @click="goToNextBinder" class="btn btn-secondary btn-small">
-              Next binder →
-            </button>
+
+          <!-- Box list view (legacy; replaced in P11) -->
+          <div v-else class="min-h-0 flex-1 overflow-y-auto rounded-lg border border-line bg-surface p-4">
+            <div v-if="currentBinderPlacements.length === 0" class="text-sm text-ink-soft">
+              This box is empty. Use "Add cards" above to add cards from a set.
+            </div>
+            <BoxCardList v-else :placements="currentBinderPlacements" :zoom="100" />
           </div>
         </div>
       </template>
@@ -1355,6 +1016,26 @@ onUnmounted(() => {
       @submit="handleNewSetSubmit"
       @cancel="handleNewSetCancel"
     />
+
+    <CardActionSheet
+      v-if="sheetCard"
+      v-model:open="sheetOpen"
+      :name="sheetCard.name"
+      :set="sheetCard.set"
+      :number="sheetCard.number"
+      :color="sheetCard.color"
+      :status="sheetCard.status"
+      :spacer-count="sheetCard.spacerCount"
+      :rarity="sheetCard.rarity"
+      :image="sheetCard.image"
+      :location="sheetCard.location"
+      @toggle-owned="onSheetToggleOwned"
+      @toggle-skipped="onSheetToggleSkipped"
+      @add-spacer="onSheetAddSpacer"
+      @remove-spacer="onSheetRemoveSpacer"
+      @open-scryfall="onSheetScryfall"
+      @remove="onSheetRemove"
+    />
   </div>
 </template>
 
@@ -1362,133 +1043,6 @@ onUnmounted(() => {
 .plan-editor {
   display: flex;
   align-items: flex-start;
-}
-
-.sidebar {
-  width: 380px;
-  background: #f8f8f8;
-  border-right: 1px solid #ddd;
-  padding: 1rem;
-  overflow-y: auto;
-  flex-shrink: 0;
-}
-
-.sidebar-section {
-  margin-bottom: 1.5rem;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.sidebar-section h2 {
-  margin: 0;
-  font-size: 1rem;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.btn-back {
-  background: none;
-  border: 1px solid #ddd;
-  color: #666;
-  font-size: 1.25rem;
-  width: 28px;
-  height: 28px;
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: all 0.2s;
-}
-
-.btn-back:hover {
-  background: #e5e5e5;
-  border-color: #4a90d9;
-  color: #4a90d9;
-}
-
-.plan-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin-top: 0.5rem;
-}
-
-.plan-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  padding: 0.5rem;
-  border: 2px solid #ddd;
-  border-radius: 4px;
-  background: #fff;
-  cursor: pointer;
-  text-align: left;
-  overflow: hidden;
-}
-
-.plan-item:hover {
-  border-color: #bbb;
-}
-
-.plan-item.active {
-  border-color: #4a90d9;
-}
-
-.plan-progress {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  background: #d4edda;
-  transition: width 0.2s ease;
-}
-
-.plan-name {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-}
-
-.plan-percent {
-  position: relative;
-  z-index: 1;
-  font-weight: bold;
-  font-size: 0.875rem;
-}
-
-.item-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.summary-text {
-  margin: 0;
-  font-size: 0.875rem;
-}
-
-.overflow-warning {
-  margin-top: 0.5rem;
-  padding: 0.5rem;
-  background: #fee;
-  border: 1px solid #fcc;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  color: #c00;
-}
-
-.overflow-warning ul {
-  margin: 0.25rem 0 0 1rem;
-  padding: 0;
 }
 
 .main-content {
@@ -1503,155 +1057,11 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #666;
+  color: var(--ink-soft);
   max-width: 600px;
   margin: 0 auto;
   text-align: center;
   padding: 2rem;
-}
-
-.empty-state h2 {
-  margin: 0 0 1rem 0;
-  font-size: 1.75rem;
-  color: #333;
-}
-
-.empty-description {
-  font-size: 1.125rem;
-  line-height: 1.6;
-  margin: 0 0 1.5rem 0;
-  color: #555;
-}
-
-.empty-tip {
-  background: #f0f7ff;
-  border: 1px solid #4a90d9;
-  border-radius: 8px;
-  padding: 1rem;
-  font-size: 0.95rem;
-  line-height: 1.5;
-  color: #333;
-  text-align: left;
-}
-
-.overview-section {
-  padding: 2rem;
-}
-
-.overview-section h2 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.75rem;
-  color: #333;
-}
-
-.overview-subtitle {
-  margin: 0 0 2rem 0;
-  color: #666;
-  font-size: 1rem;
-}
-
-.sets-overview {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.set-overview-card {
-  background: white;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  padding: 1.5rem;
-  transition: all 0.2s;
-  display: flex;
-  flex-direction: column;
-}
-
-.set-overview-header,
-.set-overview-stats,
-.set-progress-bar {
-  cursor: pointer;
-}
-
-.set-overview-card:hover .set-overview-header,
-.set-overview-card:hover .set-overview-stats,
-.set-overview-card:hover .set-progress-bar {
-  opacity: 0.8;
-}
-
-.set-overview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.set-overview-header h3 {
-  margin: 0;
-  font-size: 1.25rem;
-  color: #333;
-  flex: 1;
-}
-
-.set-completion {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #28a745;
-}
-
-.set-overview-stats {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 1rem;
-}
-
-.stat-item {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.stat-label {
-  color: #888;
-  font-size: 0.875rem;
-}
-
-.stat-value {
-  font-weight: 600;
-  color: #333;
-  font-size: 0.875rem;
-}
-
-.set-progress-bar {
-  width: 100%;
-  height: 8px;
-  background: #e0e0e0;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.set-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
-  transition: width 0.3s ease;
-}
-
-.set-binders {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eee;
-}
-
-.set-binders h4 {
-  margin: 0 0 0.75rem 0;
-  font-size: 0.875rem;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.binder-list-compact {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
 }
 
 .modal-content {
@@ -1665,310 +1075,5 @@ onUnmounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-.storage-view {
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 1rem;
-  max-height: calc(100vh - 6rem);
-  overflow: hidden;
-}
-
-.storage-view:has(.spread-view) {
-  max-width: none;
-}
-
-.storage-view:has(.box-view-title) {
-  max-width: none;
-}
-
-.page-spread {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  overflow-x: auto;
-}
-
-.page-spread:not(.spread-view) {
-  flex-direction: column;
-}
-
-.page-spread.spread-view {
-  justify-content: center;
-}
-
-.page-spread.spread-view .page-wrapper {
-  flex-shrink: 0;
-}
-
-.page-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.page-label {
-  text-align: center;
-  font-size: 0.75rem;
-  color: #666;
-  font-weight: 500;
-}
-
-.card-range {
-  display: block;
-  font-size: 0.65rem;
-  color: #999;
-  font-weight: 400;
-  margin-top: 0.125rem;
-}
-
-.page-range {
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.storage-view-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.storage-view-header h2 {
-  margin: 0;
-}
-
-.zoom-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.zoom-level {
-  font-size: 0.875rem;
-  color: #666;
-  min-width: 3rem;
-  text-align: center;
-}
-
-.btn-icon {
-  padding: 0.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.page-nav {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.btn-primary {
-  background: #4a90d9;
-  color: white;
-}
-
-.btn-primary:hover {
-  background: #3a7bc8;
-}
-
-.btn-secondary {
-  background: #e5e5e5;
-  color: #333;
-}
-
-.btn-secondary:hover {
-  background: #d5d5d5;
-}
-
-.btn-full {
-  width: 100%;
-}
-
-.btn-small {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.875rem;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-danger {
-  background: #dc3545;
-  color: white;
-}
-
-.btn-danger:hover {
-  background: #c82333;
-}
-
-.plan-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #ddd;
-}
-
-.plan-actions h2 {
-  margin: 0;
-  text-transform: none;
-  color: #333;
-}
-
-.plan-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.plan-name-input {
-  flex: 1;
-  padding: 0.25rem 0.5rem;
-  font-size: 1rem;
-  font-weight: 600;
-  border: 1px solid #4a90d9;
-  border-radius: 4px;
-  outline: none;
-}
-
-.plan-header .btn-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #f5f5f5;
-  color: #666;
-  cursor: pointer;
-}
-
-.plan-header .btn-icon:hover {
-  background: #e5e5e5;
-  color: #333;
-}
-
-.overflow-btn {
-  margin-top: 0.5rem;
-}
-
-.binder-selector {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.binder-selector label {
-  font-weight: 500;
-}
-
-.binder-selector select {
-  padding: 0.375rem 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-  min-width: 150px;
-}
-
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eee;
-}
-
-.page-input-group {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.page-input {
-  width: 60px;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  text-align: center;
-  font-size: 0.875rem;
-}
-
-.page-input::-webkit-inner-spin-button,
-.page-input::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.page-input[type=number] {
-  -moz-appearance: textfield;
-}
-
-.page-total {
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.global-position {
-  color: #999;
-  font-size: 0.75rem;
-  margin-left: 0.5rem;
-}
-
-.binder-nav {
-  display: flex;
-  justify-content: center;
-  margin-top: 0.75rem;
-}
-
-.binder-nav button {
-  background: #f0f7ff;
-  border: 1px solid #4a90d9;
-  color: #4a90d9;
-}
-
-.binder-nav button:hover {
-  background: #e0efff;
-}
-
-.box-view-title {
-  text-align: center;
-  padding: 1rem 0;
-  border-bottom: 2px solid #eee;
-  margin-bottom: 1rem;
-}
-
-.box-view-title h2 {
-  margin: 0;
-  font-size: 1.75rem;
-  color: #333;
-}
-
-.empty-box-message {
-  text-align: center;
-  padding: 3rem 2rem;
-  color: #666;
-}
-
-.empty-box-message p {
-  margin: 0;
-  font-size: 1rem;
-  line-height: 1.5;
 }
 </style>

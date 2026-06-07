@@ -52,6 +52,7 @@ const {
 } = useBinderSpread({ pageCount, slotsPerPage, stageWidth, stageHeight })
 
 onMounted(() => goToPage(props.initialPage))
+watch(() => props.initialPage, (p) => goToPage(p))
 watch(currentPage, (p) => emit('pageChange', p))
 
 // ---- page geometry (px) ----
