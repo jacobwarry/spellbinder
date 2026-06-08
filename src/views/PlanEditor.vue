@@ -908,7 +908,7 @@ onUnmounted(() => {
               </div>
 
               <div class="mt-2 h-2 cursor-pointer overflow-hidden rounded-full bg-surface-2" @click="selectPlan(plan)">
-                <div class="h-full rounded-full bg-(--accent-grad)" :style="{ width: `${planOwnedPercentage.get(plan.id) ?? 0}%` }"></div>
+                <div class="h-full rounded-full" :style="{ width: `${planOwnedPercentage.get(plan.id) ?? 0}%`, background: 'var(--accent-grad)' }"></div>
               </div>
 
               <div v-if="plan.binderIds.length > 0" class="mt-4">

@@ -14,7 +14,7 @@ import CardTile from '@/components/common/CardTile.vue'
 import type { Mana } from '@/components/common/types'
 import { useElementSize } from '@vueuse/core'
 import { useWindowVirtualizer } from '@tanstack/vue-virtual'
-import { Database, TriangleAlert, Sparkles, ArrowRight, Search } from 'lucide-vue-next'
+import { Database, TriangleAlert, Sparkles, ArrowRight, Search, ArrowUp } from 'lucide-vue-next'
 
 const router = useRouter()
 
@@ -38,7 +38,7 @@ const draftTypeFilter = ref<string[]>([])
 const draftColorFilter = ref<string[]>([])
 const draftCommanderIdentity = ref(false)
 const draftRarityFilter = ref<string[]>([])
-const draftOwnershipFilter = ref<string[]>(['owned', 'missing', 'skipped'])
+const draftOwnershipFilter = ref<string[]>(['owned'])
 const draftCmcMin = ref<number | ''>('')
 const draftCmcMax = ref<number | ''>('')
 
@@ -48,7 +48,7 @@ const advancedTypeFilter = ref<string[]>([])
 const advancedColorFilter = ref<string[]>([])
 const advancedCommanderIdentity = ref(false)
 const advancedRarityFilter = ref<string[]>([])
-const advancedOwnershipFilter = ref<string[]>(['owned', 'missing', 'skipped'])
+const advancedOwnershipFilter = ref<string[]>(['owned'])
 const advancedCmcMin = ref<number | ''>('')
 const advancedCmcMax = ref<number | ''>('')
 const advancedSearchTriggered = ref(false)
@@ -438,10 +438,31 @@ function updateListOffset() {
     : 0
 }
 
+// Optional user override for how many columns the result grid uses.
+const colsOverride = ref<number | null>(null)
 const columnCount = computed(() => {
+  if (colsOverride.value) return colsOverride.value
   const w = gridWidth.value
   if (!w) return 1
   return Math.max(1, Math.floor((w + GRID_GAP) / (TILE_MIN + GRID_GAP)))
+})
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// Short recap of the active search, shown in the sticky results bar.
+const searchSummary = computed(() => {
+  if (searchMode.value === 'quick') {
+    return debouncedSearchQuery.value ? `"${debouncedSearchQuery.value}"` : ''
+  }
+  const parts: string[] = []
+  if (advancedNameQuery.value) parts.push(`"${advancedNameQuery.value}"`)
+  if (advancedTypeFilter.value.length) parts.push(`${advancedTypeFilter.value.length} type${advancedTypeFilter.value.length > 1 ? 's' : ''}`)
+  if (advancedColorFilter.value.length) parts.push(advancedColorFilter.value.join(''))
+  if (advancedRarityFilter.value.length) parts.push(advancedRarityFilter.value.join(', '))
+  if (advancedOwnershipFilter.value.length && advancedOwnershipFilter.value.length < 3) parts.push(advancedOwnershipFilter.value.join(', '))
+  return parts.join(' · ')
 })
 
 const resultRows = computed(() => {
@@ -653,9 +674,9 @@ onMounted(async () => {
             />
 
           <!-- Quick search -->
-          <div v-if="searchMode === 'quick'" class="max-w-xl">
-            <label for="quick-search" class="sr-only">Search by card name</label>
-            <div class="relative">
+          <div v-if="searchMode === 'quick'" class="rounded-xl border border-line bg-surface p-5 shadow-(--shadow-1)">
+            <label for="quick-search" class="text-sm font-medium text-ink-soft">Card name</label>
+            <div class="relative mt-2">
               <Search :size="18" class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
               <Input id="quick-search" v-model="searchQuery" placeholder="Search by card name…" class="pl-10" />
             </div>
@@ -755,10 +776,34 @@ onMounted(async () => {
             </div>
           </div>
 
-            <p v-if="filteredCards.length > 0" class="mt-4 text-sm text-ink-faint tabular-nums">
-              {{ filteredCards.length }} {{ filteredCards.length === 1 ? 'card' : 'cards' }} · sorted by set
-            </p>
           </template>
+        </div>
+
+        <!-- Sticky results bar: keeps the count/recap + column control + back-to-top in view -->
+        <div
+          v-if="!isLoading && filteredCards.length > 0"
+          class="sticky top-16 z-10 -mx-6 mt-4 flex items-center justify-between gap-3 border-b border-line bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] px-6 py-2.5 backdrop-blur-md sm:-mx-8 sm:px-8"
+        >
+          <p class="min-w-0 truncate text-sm">
+            <span class="font-semibold tabular-nums">{{ filteredCards.length }}</span>
+            <span class="text-ink-soft"> {{ filteredCards.length === 1 ? 'card' : 'cards' }}</span>
+            <span v-if="searchSummary" class="text-ink-faint"> · {{ searchSummary }}</span>
+          </p>
+          <div class="flex shrink-0 items-center gap-2">
+            <div class="hidden items-center gap-1 sm:flex">
+              <span class="mr-0.5 text-xs text-ink-faint">Columns</span>
+              <button
+                v-for="n in [3, 4, 5]"
+                :key="n"
+                type="button"
+                :aria-pressed="colsOverride === n"
+                class="grid h-7 w-7 place-items-center rounded-md border text-xs font-semibold tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+                :class="colsOverride === n ? 'border-brand text-brand' : 'border-line text-ink-soft hover:text-foreground'"
+                @click="colsOverride = colsOverride === n ? null : n"
+              >{{ n }}</button>
+            </div>
+            <Button variant="outline" size="sm" @click="scrollToTop"><ArrowUp :size="15" /> Top</Button>
+          </div>
         </div>
 
         <!-- Results (window-virtualized against the document scroll) -->

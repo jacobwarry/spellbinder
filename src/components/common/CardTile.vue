@@ -41,7 +41,7 @@ const ART: Record<Mana, string> = {
     <div class="p-3">
       <div class="line-clamp-2 min-h-10 text-sm font-semibold leading-tight">{{ name }}</div>
       <div class="mt-1 text-[11px] font-medium text-ink-faint tabular-nums">
-        {{ set }} · {{ number }}<span v-if="rarity"> · {{ rarity }}</span>
+        {{ set }} · {{ number.padStart(4, '0') }}<span v-if="rarity"> · {{ rarity }}</span>
       </div>
       <div v-if="location" class="mt-1.5 flex items-center gap-1.5 text-xs text-brand tabular-nums">
         <Library :size="13" />{{ location }}

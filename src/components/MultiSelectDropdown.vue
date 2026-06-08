@@ -85,7 +85,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   <div ref="root" class="relative w-full">
     <button
       type="button"
-      class="flex w-full items-center justify-between gap-2 rounded-md border border-line bg-surface px-3 py-2 text-left text-sm outline-none transition-colors hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring"
+      class="flex h-11 w-full items-center justify-between gap-2 rounded-md border border-input bg-surface px-3.5 text-left text-sm outline-none transition-colors hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring"
       @click="toggleDropdown"
     >
       <span class="flex-1 truncate" :class="modelValue.length ? 'text-foreground' : 'text-ink-faint'">{{ selectedText }}</span>

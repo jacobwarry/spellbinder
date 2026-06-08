@@ -531,7 +531,7 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
           </div>
           <div class="flex w-40 shrink-0 flex-col gap-1">
             <div class="h-2 overflow-hidden rounded-full bg-surface-2">
-              <div class="h-full rounded-full bg-(--accent-grad)" :style="{ width: getDeckCompletion(deck).percentage + '%' }"></div>
+              <div class="h-full rounded-full" :style="{ width: getDeckCompletion(deck).percentage + '%', background: 'var(--accent-grad)' }"></div>
             </div>
             <span class="text-xs text-ink-soft tabular-nums">
               {{ getDeckCompletion(deck).owned }}/{{ getDeckCompletion(deck).total }} ({{ getDeckCompletion(deck).percentage }}%)
