@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog } from '@/components/ui/dialog'
 import { SegmentedControl } from '@/components/ui/segmented'
-import { Layers, Download, Trash2, ArrowLeft } from 'lucide-vue-next'
+import { Layers, Download, Trash2, ArrowLeft, Check } from 'lucide-vue-next'
 
 interface CollectionMatch {
   card: ScryfallCard
@@ -48,6 +48,8 @@ const importError = ref('')
 // Card data for selected deck
 const deckCardData = ref<Map<string, ScryfallCard>>(new Map())
 const isLoadingCards = ref(false)
+const deckCardSize = ref<'s' | 'm' | 'l'>('m')
+const deckCardMin = computed(() => ({ s: 120, m: 160, l: 210 })[deckCardSize.value])
 
 // Card search/linking modal state
 const showSearchModal = ref(false)
@@ -496,10 +498,22 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
 <template>
   <div class="decks-view">
     <header class="flex shrink-0 items-center justify-between gap-4 border-b border-line bg-surface px-6 py-4">
-      <h1 class="font-display text-xl font-bold tracking-tight">My Decks</h1>
-      <Button v-if="!selectedDeck" @click="showImportModal = true">
-        <Download :size="18" /> Import from Archidekt
-      </Button>
+      <template v-if="!selectedDeck">
+        <h1 class="font-display text-xl font-bold tracking-tight">My Decks</h1>
+        <Button @click="showImportModal = true">
+          <Download :size="18" /> Import from Archidekt
+        </Button>
+      </template>
+      <template v-else>
+        <div class="flex min-w-0 items-center gap-3">
+          <Button variant="ghost" size="sm" @click="backToList"><ArrowLeft :size="18" /> Back</Button>
+          <h1 class="truncate font-display text-xl font-bold tracking-tight">{{ selectedDeck.name }}</h1>
+        </div>
+        <span class="shrink-0 text-sm tabular-nums text-ink-soft">
+          {{ getDeckCompletion(selectedDeck).owned }}/{{ getDeckCompletion(selectedDeck).total }}
+          ({{ getDeckCompletion(selectedDeck).percentage }}%)
+        </span>
+      </template>
     </header>
 
     <!-- Deck List View -->
@@ -552,15 +566,19 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
     <!-- Deck Detail View -->
     <main v-else class="main-content">
       <div class="mx-auto max-w-6xl">
-        <div class="mb-6 flex flex-wrap items-center gap-4">
-          <Button variant="ghost" @click="backToList">
-            <ArrowLeft :size="18" /> Back
-          </Button>
-          <h2 class="font-display text-2xl font-bold tracking-tight">{{ selectedDeck.name }}</h2>
-          <span class="ml-auto text-sm text-ink-soft tabular-nums">
-            {{ getDeckCompletion(selectedDeck).owned }}/{{ getDeckCompletion(selectedDeck).total }}
-            ({{ getDeckCompletion(selectedDeck).percentage }}% complete)
-          </span>
+        <div class="mb-5 flex items-center justify-end">
+          <div class="flex items-center gap-1">
+            <span class="mr-1 text-xs text-ink-faint">Card size</span>
+            <button
+              v-for="s in (['s', 'm', 'l'] as const)"
+              :key="s"
+              type="button"
+              :aria-pressed="deckCardSize === s"
+              class="grid h-7 w-7 place-items-center rounded-md border text-xs font-semibold uppercase outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+              :class="deckCardSize === s ? 'border-brand text-brand' : 'border-line text-ink-soft hover:text-foreground'"
+              @click="deckCardSize = s"
+            >{{ s }}</button>
+          </div>
         </div>
 
         <div v-if="isLoadingCards" class="py-10 text-center text-ink-soft">Loading cards…</div>
@@ -570,25 +588,25 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
             <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">
               {{ category }} <span class="text-ink-faint">({{ cards.length }})</span>
             </h3>
-            <div class="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
+            <div class="grid gap-4" :style="{ gridTemplateColumns: `repeat(auto-fill, minmax(${deckCardMin}px, 1fr))` }">
               <button
                 v-for="card in cards"
                 :key="card.id"
-                class="group relative overflow-hidden rounded-lg border border-line outline-none transition hover:-translate-y-1 hover:shadow-(--shadow-2) focus-visible:ring-2 focus-visible:ring-ring"
+                class="group relative overflow-hidden rounded-[6px] border border-line outline-none transition hover:-translate-y-1 hover:shadow-(--shadow-2) focus-visible:ring-2 focus-visible:ring-ring"
                 :title="`${card.name} — click to link from your collection`"
                 @click="openCardSearch(card)"
               >
-                <div class="relative aspect-63/88 bg-surface-2" :class="!isDeckCardOwned(card) && 'grayscale brightness-90'">
+                <div class="relative aspect-63/88 bg-surface-2" :class="!isDeckCardOwned(card) && 'opacity-60 grayscale'">
                   <img v-if="getCardImage(card)" :src="getCardImage(card)" :alt="card.name" loading="lazy" class="absolute inset-0 h-full w-full object-cover" />
                   <span v-else class="absolute inset-0 grid place-items-center p-2 text-center text-xs text-ink-faint">{{ card.name }}</span>
                   <span v-if="card.quantity > 1" class="absolute right-1.5 top-1.5 rounded-md bg-[rgba(0,0,0,.7)] px-1.5 py-0.5 text-[11px] font-bold text-white tabular-nums">×{{ card.quantity }}</span>
                 </div>
+                <!-- owned → green check corner; missing → faded art (consistent with the binder) -->
                 <span
-                  class="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] font-semibold"
-                  :style="isDeckCardOwned(card)
-                    ? 'color:var(--owned);background:var(--owned-soft)'
-                    : 'color:var(--missing);background:var(--surface-2)'"
-                >{{ isDeckCardOwned(card) ? 'Owned' : 'Missing' }}</span>
+                  v-if="isDeckCardOwned(card)"
+                  class="absolute left-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full text-[#06210f]"
+                  style="background:var(--owned)"
+                ><Check :size="12" :stroke-width="3" /></span>
               </button>
             </div>
           </div>
