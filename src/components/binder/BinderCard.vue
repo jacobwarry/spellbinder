@@ -42,34 +42,25 @@ const ownedPercentage = computed(() => {
   return Math.round(((props.ownedCards ?? 0) / props.plannedCards) * 100)
 })
 
-// Cover image handling
+// Cover image handling. Load unconditionally (not gated on hasCoverImage) so a
+// previously uploaded cover still surfaces even if that flag drifted out of sync.
 const coverImageUrl = ref<string | null>(null)
 
 async function loadCoverImage() {
-  if (props.binder.hasCoverImage) {
-    try {
-      const url = await getBinderImage(props.binder.id)
-      coverImageUrl.value = url
-    } catch (error) {
-      console.error('Failed to load binder cover image:', error)
-    }
+  if (coverImageUrl.value) {
+    URL.revokeObjectURL(coverImageUrl.value)
+    coverImageUrl.value = null
+  }
+  try {
+    coverImageUrl.value = await getBinderImage(props.binder.id)
+  } catch {
+    coverImageUrl.value = null
   }
 }
 
-watch(() => props.binder.hasCoverImage, () => {
-  if (props.binder.hasCoverImage) {
-    loadCoverImage()
-  } else {
-    if (coverImageUrl.value) {
-      URL.revokeObjectURL(coverImageUrl.value)
-    }
-    coverImageUrl.value = null
-  }
-}, { immediate: true })
+watch(() => props.binder.id, loadCoverImage, { immediate: true })
 
-onMounted(() => {
-  loadCoverImage()
-})
+onMounted(loadCoverImage)
 
 onUnmounted(() => {
   if (coverImageUrl.value) {

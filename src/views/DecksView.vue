@@ -583,9 +583,9 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
 
         <div v-if="isLoadingCards" class="py-10 text-center text-ink-soft">Loading cards…</div>
 
-        <div v-else class="flex flex-col gap-8">
-          <div v-for="[category, cards] in groupedCards" :key="category">
-            <h3 class="mb-3 text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">
+        <div v-else class="flex flex-col gap-6">
+          <section v-for="[category, cards] in groupedCards" :key="category" class="rounded-xl border border-line bg-surface p-4 shadow-(--shadow-1)">
+            <h3 class="mb-3 border-b border-line pb-2 text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">
               {{ category }} <span class="text-ink-faint">({{ cards.length }})</span>
             </h3>
             <div class="grid gap-4" :style="{ gridTemplateColumns: `repeat(auto-fill, minmax(${deckCardMin}px, 1fr))` }">
@@ -609,7 +609,7 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
                 ><Check :size="12" :stroke-width="3" /></span>
               </button>
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </main>

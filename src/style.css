@@ -98,4 +98,15 @@
   *::-webkit-scrollbar-corner {
     background: transparent;
   }
+
+  /* Hide the native number-input spinners (they clash with the styled inputs) */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
 }

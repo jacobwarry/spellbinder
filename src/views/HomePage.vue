@@ -438,8 +438,8 @@ function updateListOffset() {
     : 0
 }
 
-// Optional user override for how many columns the result grid uses.
-const colsOverride = ref<number | null>(null)
+// How many columns the result grid uses (defaults to 4; null = auto-fit by width).
+const colsOverride = ref<number | null>(4)
 const columnCount = computed(() => {
   if (colsOverride.value) return colsOverride.value
   const w = gridWidth.value
@@ -673,12 +673,14 @@ onMounted(async () => {
               class="mt-4 mb-4"
             />
 
-          <!-- Quick search -->
+          <!-- Quick search (same field structure as advanced to avoid a layout shift) -->
           <div v-if="searchMode === 'quick'" class="rounded-xl border border-line bg-surface p-5 shadow-(--shadow-1)">
-            <label for="quick-search" class="text-sm font-medium text-ink-soft">Card name</label>
-            <div class="relative mt-2">
-              <Search :size="18" class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
-              <Input id="quick-search" v-model="searchQuery" placeholder="Search by card name…" class="pl-10" />
+            <div class="flex flex-col gap-2">
+              <label for="quick-search" class="text-sm font-medium text-ink-soft">Card name</label>
+              <div class="relative">
+                <Search :size="18" class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+                <Input id="quick-search" v-model="searchQuery" placeholder="Search by card name…" class="pl-10" />
+              </div>
             </div>
           </div>
 

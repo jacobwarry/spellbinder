@@ -171,12 +171,17 @@ watch(() => viewingBinder.value?.id, async () => {
     viewingBinderCover.value = null
   }
   const b = viewingBinder.value
-  if (b && b.hasCoverImage) {
+  if (b && b.type === 'binder') {
     try {
       viewingBinderCover.value = await getBinderImage(b.id)
     } catch { /* no cover */ }
   }
 }, { immediate: true })
+
+// Whether the viewing binder has neighbours, so edge page-turns can hop binders.
+const viewingBinderIndex = computed(() => planBinders.value.findIndex(b => b.id === selectedBinderForView.value))
+const hasPrevBinderView = computed(() => viewingBinderIndex.value > 0)
+const hasNextBinderView = computed(() => viewingBinderIndex.value >= 0 && viewingBinderIndex.value < planBinders.value.length - 1)
 
 // Storage boxes are linear: render their placements in order, no page grid.
 const boxItems = computed(() => {
@@ -501,6 +506,10 @@ function removeSegment(segment: Segment) {
   if (currentPlanId.value) {
     plansStore.removeSegmentFromPlan(currentPlanId.value, segment.id)
   }
+}
+
+function updateSegmentName(segment: Segment, name: string) {
+  segmentsStore.updateSegment(segment.id, { name })
 }
 
 function updateSegmentOffset(segment: Segment, offset: number) {
@@ -871,6 +880,7 @@ onUnmounted(() => {
               :key="segment.id"
               :segment="segment"
               :binders="planBinders"
+              @update-name="updateSegmentName"
               @remove="removeSegment"
               @update-offset="updateSegmentOffset"
               @update-target-binder="updateSegmentTargetBinder"
@@ -1048,6 +1058,8 @@ onUnmounted(() => {
               :cover-image="viewingBinderCover ?? undefined"
               :initial-page="selectedPage"
               :paused="anyModalOpen"
+              :has-prev-binder="hasPrevBinderView"
+              :has-next-binder="hasNextBinderView"
               @select="onBinderSlotSelect"
               @insert="onBinderSlotInsert"
               @quick-own="onBinderQuickOwn"

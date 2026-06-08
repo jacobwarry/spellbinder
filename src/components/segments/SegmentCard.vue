@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, nextTick } from 'vue'
 import type { Segment, Binder } from '@/types'
 import { useCollectionStore } from '@/stores'
 import { getCachedCards, fetchSets } from '@/api/scryfall'
-import { ChevronUp, ChevronDown, Pencil, Trash2 } from 'lucide-vue-next'
+import { ChevronUp, ChevronDown, Pencil, Trash2, Check, X } from 'lucide-vue-next'
 
 const props = defineProps<{
   segment: Segment
@@ -30,7 +30,7 @@ const ownedPercentage = computed(() => {
 })
 
 const emit = defineEmits<{
-  edit: [segment: Segment]
+  updateName: [segment: Segment, name: string]
   remove: [segment: Segment]
   updateOffset: [segment: Segment, offset: number]
   updateTargetBinder: [segment: Segment, binderId: string | undefined]
@@ -39,9 +39,29 @@ const emit = defineEmits<{
   moveDown: [segment: Segment]
 }>()
 
+// Inline rename
+const editingName = ref(false)
+const draftName = ref('')
+const nameInput = ref<HTMLInputElement | null>(null)
+async function startRename() {
+  draftName.value = props.segment.name
+  editingName.value = true
+  await nextTick()
+  nameInput.value?.focus()
+  nameInput.value?.select()
+}
+function commitRename() {
+  const name = draftName.value.trim()
+  if (name && name !== props.segment.name) emit('updateName', props.segment, name)
+  editingName.value = false
+}
+function cancelRename() {
+  editingName.value = false
+}
+
 function handleOffsetChange(event: Event) {
   const input = event.target as HTMLInputElement
-  const offset = Math.min(9, Math.max(0, parseInt(input.value, 10) || 0))
+  const offset = Math.max(0, parseInt(input.value, 10) || 0)
   input.value = String(offset)
   emit('updateOffset', props.segment, offset)
 }
@@ -102,7 +122,18 @@ async function copyForCardmarket() {
     class="relative cursor-pointer rounded-lg border border-line bg-surface p-3 pr-14 transition-colors hover:border-line-strong"
     @click="$emit('navigate', segment)"
   >
-    <h3 class="text-sm font-semibold">{{ segment.name }}</h3>
+    <div v-if="editingName" class="flex items-center gap-1.5 pr-14" @click.stop>
+      <input
+        ref="nameInput"
+        v-model="draftName"
+        class="h-7 min-w-0 flex-1 rounded-md border border-input bg-surface-2 px-2 text-sm font-semibold text-foreground outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-(--accent-glow)"
+        @keyup.enter="commitRename"
+        @keyup.esc="cancelRename"
+      />
+      <button class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-line text-owned outline-none hover:bg-(--owned-soft) focus-visible:ring-2 focus-visible:ring-ring" title="Save name" @click="commitRename"><Check :size="14" /></button>
+      <button class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-line text-ink-soft outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring" title="Cancel" @click="cancelRename"><X :size="14" /></button>
+    </div>
+    <h3 v-else class="text-sm font-semibold">{{ segment.name }}</h3>
     <p class="mt-0.5 text-sm text-ink-soft tabular-nums">
       {{ segment.cardIds.length }} cards from {{ segment.scryfallSetCode.toUpperCase() }}
     </p>
@@ -119,9 +150,8 @@ async function copyForCardmarket() {
         type="number"
         :value="segment.offset"
         min="0"
-        max="9"
-        title="Skip this many slots before placing cards (0-9)"
-        class="h-7 w-14 rounded-md border border-input bg-surface-2 px-2 text-center text-foreground outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-(--accent-glow)"
+        title="Skip this many slots before placing cards"
+        class="h-7 w-16 rounded-md border border-input bg-surface-2 px-2 text-center text-foreground outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-(--accent-glow)"
         @change="handleOffsetChange"
       />
       <span class="text-ink-faint">slots</span>
@@ -146,10 +176,10 @@ async function copyForCardmarket() {
       <button class="rounded-md bg-brand px-2 py-1 text-[11px] font-semibold text-primary-foreground transition hover:brightness-110" @click="copyForCardmarket">CARDMARKET</button>
     </div>
 
-    <div class="absolute right-3 top-3 flex gap-1">
+    <div v-if="!editingName" class="absolute right-3 top-3 flex gap-1">
       <button class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" title="Move up" aria-label="Move up" @click.stop="$emit('moveUp', segment)"><ChevronUp :size="14" /></button>
       <button class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" title="Move down" aria-label="Move down" @click.stop="$emit('moveDown', segment)"><ChevronDown :size="14" /></button>
-      <button class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" title="Edit" aria-label="Edit segment" @click.stop="$emit('edit', segment)"><Pencil :size="14" /></button>
+      <button class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" title="Rename" aria-label="Rename segment" @click.stop="startRename"><Pencil :size="14" /></button>
       <button class="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-soft outline-none transition-colors hover:bg-(--skipped-soft) hover:text-skipped focus-visible:ring-2 focus-visible:ring-ring" title="Remove" aria-label="Remove segment" @click.stop="$emit('remove', segment)"><Trash2 :size="14" /></button>
     </div>
   </div>

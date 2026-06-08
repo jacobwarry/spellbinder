@@ -30,8 +30,11 @@ const props = withDefaults(
     /** Host sets true while a modal/sheet is open to suspend nav (keys + swipe). */
     paused?: boolean
     showToolbar?: boolean
+    /** Whether a previous/next binder exists, so edge turns can hop binders. */
+    hasPrevBinder?: boolean
+    hasNextBinder?: boolean
   }>(),
-  { initialPage: 1, paused: false, showToolbar: true }
+  { initialPage: 1, paused: false, showToolbar: true, hasPrevBinder: false, hasNextBinder: false }
 )
 
 const emit = defineEmits<{
@@ -162,9 +165,8 @@ function onPointerUp(e: PointerEvent) {
 // ---- overview ----
 const overviewOpen = ref(false)
 const MULTI_COLOR = '#d6ad55' // gold, for multicolor cards in thumbnails
-// Overview is an ownership heatmap: owned → card color, everything else → flat gray.
+// Color always encodes colour identity; ownership is encoded by fill vs outline.
 function cellColor(card: BinderSlotCard): string {
-  if (card.status !== 'owned') return 'var(--missing)'
   return card.multicolor ? MULTI_COLOR : `var(--mana-${card.color.toLowerCase()})`
 }
 function jumpTo(page: number) {
@@ -276,11 +278,17 @@ function jumpTo(page: number) {
 
       <!-- overview overlay: fixed header + internal-scroll grid -->
       <div v-if="overviewOpen" class="absolute inset-0 z-20 flex flex-col bg-background">
-        <div class="flex shrink-0 items-center justify-between border-b border-line px-5 py-3">
-          <h2 class="font-display text-lg font-bold">All pages</h2>
+        <div class="flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-3">
+          <div class="flex min-w-0 items-center gap-4">
+            <h2 class="font-display text-lg font-bold">All pages</h2>
+            <div class="hidden items-center gap-3 text-xs text-ink-faint sm:flex">
+              <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded-xs bg-ink-soft"></span>Owned</span>
+              <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded-xs border-[1.5px] border-ink-soft"></span>Missing</span>
+            </div>
+          </div>
           <button
             type="button"
-            class="grid h-9 w-9 place-items-center rounded-md border border-line text-ink-soft outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring"
+            class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-line text-ink-soft outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Close overview"
             @click="overviewOpen = false"
           >
@@ -302,8 +310,10 @@ function jumpTo(page: number) {
                   v-for="(card, idx) in slotsForPage(p)"
                   :key="idx"
                   class="aspect-63/88 rounded-xs"
-                  :class="card ? '' : 'border border-dashed border-line-strong'"
-                  :style="card ? { background: cellColor(card) } : undefined"
+                  :class="card ? (card.status === 'owned' ? '' : 'border-[1.5px]') : 'border border-dashed border-line-strong'"
+                  :style="card
+                    ? (card.status === 'owned' ? { background: cellColor(card) } : { borderColor: cellColor(card) })
+                    : undefined"
                 ></span>
               </div>
               <p class="mt-2 text-center text-xs font-semibold tabular-nums text-ink-soft">Page {{ p }}</p>
@@ -317,7 +327,7 @@ function jumpTo(page: number) {
     <div class="flex shrink-0 items-center gap-3 border-t border-line px-4 py-2">
       <button
         type="button"
-        :disabled="!canPrev"
+        :disabled="!canPrev && !hasPrevBinder"
         class="grid h-11 min-w-11 place-items-center rounded-md border border-line-strong bg-surface text-ink outline-none transition-colors hover:enabled:border-brand hover:enabled:text-brand disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Previous page"
         @click="turn(-1)"
@@ -332,7 +342,7 @@ function jumpTo(page: number) {
       </div>
       <button
         type="button"
-        :disabled="!canNext"
+        :disabled="!canNext && !hasNextBinder"
         class="grid h-11 min-w-11 place-items-center rounded-md border border-line-strong bg-surface text-ink outline-none transition-colors hover:enabled:border-brand hover:enabled:text-brand disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Next page"
         @click="turn(1)"
