@@ -6,6 +6,7 @@ import type { ScryfallSet, ContainerType } from '@/types'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { X } from 'lucide-vue-next'
 
 const emit = defineEmits<{
@@ -106,9 +107,6 @@ async function handleSubmit() {
     isSubmitting.value = false
   }
 }
-
-const selectClass =
-  'w-full rounded-md border border-line bg-surface px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
 </script>
 
 <template>
@@ -135,10 +133,10 @@ const selectClass =
 
           <div class="flex flex-col gap-1.5">
             <label class="text-sm font-medium text-ink-soft">Storage type</label>
-            <select v-model="binderContainerType" :class="selectClass">
+            <Select v-model="binderContainerType">
               <option value="binder">Binder (pages & slots)</option>
               <option value="box">Storage box (unlimited)</option>
-            </select>
+            </Select>
           </div>
 
           <template v-if="binderContainerType === 'binder'">
@@ -149,10 +147,10 @@ const selectClass =
               </div>
               <div class="flex flex-col gap-1.5">
                 <label class="text-sm font-medium text-ink-soft">Slots per page</label>
-                <select v-model.number="binderSlotsPerPage" :class="selectClass">
+                <Select v-model="binderSlotsPerPage">
                   <option :value="9">9 (3×3)</option>
                   <option :value="12">12 (4×3)</option>
-                </select>
+                </Select>
               </div>
             </div>
             <p class="text-sm tabular-nums text-ink-soft">Capacity: {{ binderPageCount * binderSlotsPerPage }} cards</p>

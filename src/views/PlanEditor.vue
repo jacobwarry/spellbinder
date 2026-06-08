@@ -21,6 +21,7 @@ import BoxCardPicker from '@/components/sets/BoxCardPicker.vue'
 import CardSearchModal from '@/components/cards/CardSearchModal.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Plus, ArrowLeft, Pencil, Check, X, Trash2, Lightbulb } from 'lucide-vue-next'
 import NewSetDialog from '@/components/plans/NewSetDialog.vue'
 
@@ -1010,16 +1011,14 @@ onUnmounted(() => {
           <!-- slim header: storage picker + bulk/box action -->
           <div class="flex shrink-0 flex-wrap items-center gap-3">
             <label class="flex items-center gap-2 text-sm">
-              <span class="text-ink-soft">Storage</span>
-              <select
-                v-model="selectedBinderForView"
-                class="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                @change="selectedPage = 1"
-              >
-                <option v-for="binder in planBinders" :key="binder.id" :value="binder.id">
-                  {{ binder.name }}
-                </option>
-              </select>
+              <span class="shrink-0 text-ink-soft">Storage</span>
+              <div class="w-56">
+                <Select v-model="selectedBinderForView" class="font-semibold" @change="selectedPage = 1">
+                  <option v-for="binder in planBinders" :key="binder.id" :value="binder.id">
+                    {{ binder.name }}
+                  </option>
+                </Select>
+              </div>
             </label>
             <div class="flex-1"></div>
             <Button
