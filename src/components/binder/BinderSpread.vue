@@ -12,7 +12,7 @@
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import { ChevronLeft, ChevronRight, LayoutGrid, X } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, LayoutGrid, X, CheckCheck } from 'lucide-vue-next'
 import BinderSlot from './BinderSlot.vue'
 import { useBinderSpread, SPREAD_GEOMETRY, SLOT_ASPECT } from '@/composables/useBinderSpread'
 import type { BinderSlotCard } from '@/components/common/types'
@@ -24,6 +24,8 @@ const props = withDefaults(
     slotsPerPage: number
     /** pages[pageIndex][slotIndex] = card or null (empty slot). */
     pages: (BinderSlotCard | null)[][]
+    /** Optional uploaded binder cover, shown on the front/back cover. */
+    coverImage?: string
     initialPage?: number
     /** Host sets true while a modal/sheet is open to suspend nav (keys + swipe). */
     paused?: boolean
@@ -39,6 +41,8 @@ const emit = defineEmits<{
   pageChange: [page: number]
   /** Turned past the first (-1) or last (+1) view — host may switch binders. */
   edge: [direction: -1 | 1]
+  /** Toggle owned for every card on the currently visible page(s). */
+  markPageOwned: [pages: number[]]
 }>()
 
 const { GAP, PAD, GUTTER } = SPREAD_GEOMETRY
@@ -183,6 +187,15 @@ function jumpTo(page: number) {
         </span>
         <button
           type="button"
+          class="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink-soft outline-none transition-colors hover:border-line-strong hover:text-brand focus-visible:ring-2 focus-visible:ring-ring"
+          title="Mark the visible page(s) owned"
+          @click="emit('markPageOwned', currentView)"
+        >
+          <CheckCheck :size="18" />
+          <span class="hidden sm:inline">Mark page</span>
+        </button>
+        <button
+          type="button"
           :aria-pressed="overviewOpen"
           class="inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring"
           :class="overviewOpen
@@ -226,15 +239,17 @@ function jumpTo(page: number) {
             </div>
           </div>
 
-          <!-- inside cover placeholder -->
+          <!-- inside cover: the uploaded binder cover, or a hatched placeholder -->
           <div
             v-else-if="part.type === 'cover'"
-            class="grid place-items-center rounded-xl border border-dashed border-line-strong p-3 text-center text-xs text-ink-faint"
+            class="grid place-items-center overflow-hidden rounded-xl border p-3 text-center text-xs text-ink-faint"
+            :class="coverImage ? 'border-line-strong' : 'border-dashed border-line-strong'"
             :style="{ width: pageWidth + 'px', height: pageHeight + 'px',
-              background: 'repeating-linear-gradient(135deg,var(--surface-2),var(--surface-2) 10px,var(--surface) 10px,var(--surface) 20px)' }"
+              background: coverImage ? undefined : 'repeating-linear-gradient(135deg,var(--surface-2),var(--surface-2) 10px,var(--surface) 10px,var(--surface) 20px)' }"
             aria-hidden="true"
           >
-            <span>{{ part.label }}</span>
+            <img v-if="coverImage" :src="coverImage" alt="" class="h-full w-full object-cover" />
+            <span v-else>{{ part.label }}</span>
           </div>
 
           <!-- a binder page -->

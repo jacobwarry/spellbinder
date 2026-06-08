@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { ScryfallSet, ScryfallCard, BinderPlan, Binder, Segment } from '@/types'
 import { getPlacementOwnershipKey, type CardPlacement } from '@/types/placement'
 import { getCardImageUri } from '@/api/scryfall'
+import { getBinderImage } from '@/utils/binderImages'
 import { useBindersStore, useSegmentsStore, usePlansStore, useCollectionStore } from '@/stores'
 import { calculatePlacements, type PlacementResult } from '@/composables/usePlacement'
 import { useAllPlacements, buildBinderStats } from '@/composables/useAllPlacements'
@@ -161,6 +162,21 @@ const binderLayout = computed<BinderLayout | null>(() => {
 })
 const viewingBinderPages = computed(() => binderLayout.value?.pages ?? [])
 
+// Uploaded binder cover for the viewing binder (shown on the cover pages).
+const viewingBinderCover = ref<string | null>(null)
+watch(() => viewingBinder.value?.id, async () => {
+  if (viewingBinderCover.value) {
+    URL.revokeObjectURL(viewingBinderCover.value)
+    viewingBinderCover.value = null
+  }
+  const b = viewingBinder.value
+  if (b && b.hasCoverImage) {
+    try {
+      viewingBinderCover.value = await getBinderImage(b.id)
+    } catch { /* no cover */ }
+  }
+}, { immediate: true })
+
 // Storage boxes are linear: render their placements in order, no page grid.
 const boxItems = computed(() => {
   if (!viewingBinder.value || viewingBinder.value.type !== 'box') return []
@@ -178,6 +194,16 @@ function onBinderQuickOwn(page: number, slot0: number) {
 }
 function onBoxQuickOwn(p: CardPlacement) {
   collectionStore.toggleOwned(getPlacementOwnershipKey(p))
+}
+
+// Toggle owned for every card on the currently visible binder page(s).
+function onMarkPageOwned(pages: number[]) {
+  const keys = currentBinderPlacements.value
+    .filter(p => pages.includes(p.pageNumber))
+    .map(p => getPlacementOwnershipKey(p))
+  if (keys.length === 0) return
+  const allOwned = keys.every(k => collectionStore.isOwned(k))
+  collectionStore.setMultipleOwned(keys, !allOwned)
 }
 
 // Turning past the first/last page hops to the previous/next binder in the plan.
@@ -362,6 +388,7 @@ function selectPlan(plan: BinderPlan) {
   router.push(`/sets/${plan.id}`)
   showBinderForm.value = false
   editingBinder.value = null
+  window.scrollTo({ top: 0 })
 }
 
 function startEditPlanName() {
@@ -653,6 +680,7 @@ function viewBinder(binderId: string) {
   selectedPage.value = 1
   showBinderForm.value = false
   editingBinder.value = null
+  window.scrollTo({ top: 0 })
 }
 
 function deletePlan() {
@@ -1018,12 +1046,14 @@ onUnmounted(() => {
               :page-count="viewingBinder.pageCount"
               :slots-per-page="viewingBinder.slotsPerPage"
               :pages="viewingBinderPages"
+              :cover-image="viewingBinderCover ?? undefined"
               :initial-page="selectedPage"
               :paused="anyModalOpen"
               @select="onBinderSlotSelect"
               @insert="onBinderSlotInsert"
               @quick-own="onBinderQuickOwn"
               @edge="onBinderEdge"
+              @mark-page-owned="onMarkPageOwned"
             />
           </div>
 

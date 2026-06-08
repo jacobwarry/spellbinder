@@ -89,7 +89,7 @@ onUnmounted(() => {
     <div class="min-w-0 flex-1" :class="showActions && 'pr-14'">
       <h3 class="flex items-center gap-2 text-sm font-semibold">
         <span class="truncate">{{ binder.name }}</span>
-        <span v-if="binder.type === 'box'" class="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Box</span>
+        <span class="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{{ binder.type === 'box' ? 'Box' : 'Binder' }}</span>
       </h3>
       <p class="mt-0.5 text-sm text-ink-soft tabular-nums">
         <template v-if="plannedCards !== undefined">
