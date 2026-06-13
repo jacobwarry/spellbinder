@@ -77,6 +77,26 @@ export const useCollectionStore = defineStore('collection', () => {
     saveToStorage(SKIPPED_STORAGE_KEY, skippedCardIds.value)
   }
 
+  // Drop every owned/skipped key belonging to a segment. Called when a segment is
+  // deleted so its position-keyed ownership data doesn't linger as orphaned state.
+  function clearSegment(segmentId: string): void {
+    const prefix = `${segmentId}:`
+    const newOwned = new Set<string>()
+    const newSkipped = new Set<string>()
+
+    for (const key of ownedCardIds.value) {
+      if (!key.startsWith(prefix)) newOwned.add(key)
+    }
+    for (const key of skippedCardIds.value) {
+      if (!key.startsWith(prefix)) newSkipped.add(key)
+    }
+
+    ownedCardIds.value = newOwned
+    skippedCardIds.value = newSkipped
+    saveToStorage(STORAGE_KEY, ownedCardIds.value)
+    saveToStorage(SKIPPED_STORAGE_KEY, skippedCardIds.value)
+  }
+
   // Shift indices when a card is inserted (indices >= insertIndex move up by 1)
   function shiftIndicesForInsert(segmentId: string, insertIndex: number): void {
     const prefix = `${segmentId}:`
@@ -167,6 +187,7 @@ export const useCollectionStore = defineStore('collection', () => {
     isSkipped,
     toggleSkipped,
     setSkipped,
+    clearSegment,
     shiftIndicesForInsert,
     shiftIndicesForRemove
   }

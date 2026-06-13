@@ -89,6 +89,9 @@ export const useSegmentsStore = defineStore('segments', () => {
     if (index !== -1) {
       segments.value.splice(index, 1)
       saveToStorage(segments.value)
+      // Deleting a segment must also drop its position-keyed ownership data,
+      // otherwise the keys orphan and stale cards keep showing up in search.
+      useCollectionStore().clearSegment(id)
     }
   }
 

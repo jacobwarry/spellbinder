@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import type { Binder } from '@/types'
-import { getBinderImage } from '@/utils/binderImages'
-import { Pencil, Trash2 } from 'lucide-vue-next'
+import { getBinderImage, binderImageVersion } from '@/utils/binderImages'
+import { Pencil, Trash2, ImageIcon } from 'lucide-vue-next'
+import ProgressBar from '@/components/common/ProgressBar.vue'
 
 const props = withDefaults(defineProps<{
   binder: Binder
@@ -58,9 +59,9 @@ async function loadCoverImage() {
   }
 }
 
-watch(() => props.binder.id, loadCoverImage, { immediate: true })
-
-onMounted(loadCoverImage)
+// Reload on binder change and whenever any cover is saved/deleted, so removing
+// or replacing an image updates every card instance immediately.
+watch([() => props.binder.id, binderImageVersion], loadCoverImage, { immediate: true })
 
 onUnmounted(() => {
   if (coverImageUrl.value) {
@@ -74,30 +75,37 @@ onUnmounted(() => {
     class="relative flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors"
     :class="selected ? 'border-brand bg-(--accent-soft)' : 'border-line bg-surface hover:border-line-strong'"
   >
-    <div v-if="coverImageUrl" class="h-21 w-15 shrink-0 overflow-hidden rounded border border-line bg-surface-2">
-      <img :src="coverImageUrl" :alt="`${binder.name} cover`" class="h-full w-full object-cover" />
+    <div
+      v-if="binder.type === 'binder'"
+      class="grid h-21 w-15 shrink-0 place-items-center overflow-hidden rounded border border-line bg-surface-2"
+    >
+      <img v-if="coverImageUrl" :src="coverImageUrl" :alt="`${binder.name} cover`" class="h-full w-full object-cover" />
+      <ImageIcon v-else :size="20" class="text-ink-faint" aria-hidden="true" />
     </div>
     <div class="min-w-0 flex-1" :class="showActions && 'pr-14'">
       <h3 class="flex items-center gap-2 text-sm font-semibold">
         <span class="truncate">{{ binder.name }}</span>
         <span class="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{{ binder.type === 'box' ? 'Box' : 'Binder' }}</span>
       </h3>
-      <p class="mt-0.5 text-sm text-ink-soft tabular-nums">
-        <template v-if="plannedCards !== undefined">
+      <template v-if="plannedCards !== undefined">
+        <!-- Capacity / fill (planned vs. capacity) -->
+        <p class="mt-0.5 text-xs text-ink-faint tabular-nums">
           <span
-            class="font-semibold"
-            :class="fillStatus === 'overflow' ? 'text-skipped' : fillStatus === 'full' ? 'text-owned' : 'text-foreground'"
-          >{{ plannedCards }}</span>
-          <template v-if="binder.type === 'binder'"> / {{ capacity }} cards ({{ binder.pageCount }} pages)</template>
-          <template v-else> cards</template>
-        </template>
-        <template v-else>
-          <template v-if="binder.type === 'binder'">{{ capacity }} cards ({{ binder.pageCount }} pages)</template>
-          <template v-else>Unlimited capacity</template>
-        </template>
-      </p>
-      <p v-if="plannedCards !== undefined && plannedCards > 0" class="mt-1 text-xs text-ink-faint tabular-nums">
-        <span class="font-medium" :class="ownedPercentage === 100 && 'text-owned'">{{ ownedCards ?? 0 }}</span> / {{ plannedCards }} owned
+            class="font-medium"
+            :class="fillStatus === 'overflow' ? 'text-skipped' : fillStatus === 'full' ? 'text-owned' : 'text-ink-soft'"
+          >{{ plannedCards }}</span><template v-if="binder.type === 'binder'"> / {{ capacity }} cards · {{ binder.pageCount }} pages</template><template v-else> cards</template>
+        </p>
+        <!-- Ownership completion (owned vs. planned) -->
+        <div v-if="plannedCards > 0" class="mt-1.5 flex items-center gap-2">
+          <ProgressBar :value="ownedPercentage" :complete="ownedPercentage === 100" class="flex-1" />
+          <span class="shrink-0 text-xs tabular-nums" :class="ownedPercentage === 100 ? 'text-owned' : 'text-ink-soft'">
+            {{ ownedCards ?? 0 }}/{{ plannedCards }} · {{ ownedPercentage }}%
+          </span>
+        </div>
+      </template>
+      <p v-else class="mt-0.5 text-sm text-ink-soft tabular-nums">
+        <template v-if="binder.type === 'binder'">{{ capacity }} cards · {{ binder.pageCount }} pages</template>
+        <template v-else>Unlimited capacity</template>
       </p>
     </div>
     <div v-if="showActions" class="absolute right-3 top-3 flex gap-1">

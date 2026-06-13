@@ -4,24 +4,26 @@ import { useRoute, useRouter } from 'vue-router'
 import type { ScryfallSet, ScryfallCard, BinderPlan, Binder, Segment } from '@/types'
 import { getPlacementOwnershipKey, type CardPlacement } from '@/types/placement'
 import { getCardImageUri } from '@/api/scryfall'
-import { getBinderImage } from '@/utils/binderImages'
+import { getBinderImage, binderImageVersion } from '@/utils/binderImages'
 import { useBindersStore, useSegmentsStore, usePlansStore, useCollectionStore } from '@/stores'
 import { calculatePlacements, type PlacementResult } from '@/composables/usePlacement'
 import { useAllPlacements, buildBinderStats } from '@/composables/useAllPlacements'
 import type { Mana, Ownership, BinderSlotCard } from '@/components/common/types'
 import BinderCard from '@/components/binder/BinderCard.vue'
-import BinderForm from '@/components/binder/BinderForm.vue'
+import StorageDialog from '@/components/binder/StorageDialog.vue'
 import BinderSpread from '@/components/binder/BinderSpread.vue'
 import CardActionSheet from '@/components/binder/CardActionSheet.vue'
 import BoxView from '@/components/binder/BoxView.vue'
 import SegmentCard from '@/components/segments/SegmentCard.vue'
-import SetSelector from '@/components/sets/SetSelector.vue'
-import CardPicker from '@/components/sets/CardPicker.vue'
-import BoxCardPicker from '@/components/sets/BoxCardPicker.vue'
+import AddCardsDialog from '@/components/sets/AddCardsDialog.vue'
 import CardSearchModal from '@/components/cards/CardSearchModal.vue'
+import CardSizeControl from '@/components/common/CardSizeControl.vue'
+import { useCardSize } from '@/composables/useCardSize'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { Dialog } from '@/components/ui/dialog'
+import { isStorageBox } from '@/stores/binders'
 import { Plus, ArrowLeft, Pencil, Check, X, Trash2, Lightbulb } from 'lucide-vue-next'
 import NewSetDialog from '@/components/plans/NewSetDialog.vue'
 
@@ -40,16 +42,24 @@ const currentPlanId = computed(() => {
 })
 const showBinderForm = ref(false)
 const editingBinder = ref<Binder | null>(null)
-const showSetSelector = ref(false)
 const showNewSetDialog = ref(false)
-const selectedSet = ref<ScryfallSet | null>(null)
-const showBoxCardSelector = ref(false)
-const selectedSetForBox = ref<ScryfallSet | null>(null)
+// Unified "add cards from a set" flow. 'segment' = add as a plan segment,
+// 'box' = add cards into the currently-viewed storage box (auto-owned).
+const addCardsMode = ref<'segment' | 'box' | null>(null)
+// User-adjustable card size for the box grid (tile min-width, px), persisted.
+const boxCardSize = useCardSize('spellbinder-cardsize-box', 170)
 const placementResult = ref<PlacementResult | null>(null)
 const selectedBinderForView = ref<string | null>(null)
 const selectedPage = ref(1)
+// Page number(s) currently visible in the binder viewer, reported by BinderSpread.
+// Drives which segment card is highlighted as "currently viewing".
+const visiblePages = ref<number[]>([])
 const editingPlanName = ref(false)
 const planNameInput = ref('')
+// Sidebar drill-in: when a set is selected the panel shows its working data
+// (storage + segments). Toggling this swaps back to the full set list to switch.
+const showSetList = ref(false)
+const showDeleteConfirm = ref(false)
 const showCardSearch = ref(false)
 const insertTargetSlot = ref<{
   binderId: string
@@ -109,6 +119,20 @@ const planSegments = computed(() =>
   currentPlan.value ? segmentsStore.getSegmentsInOrder(currentPlan.value.segmentIds) : []
 )
 
+// Cards can only be placed into storage, so a plan needs at least one binder/box
+// before segments are worth adding.
+const hasStorage = computed(() => planBinders.value.length > 0)
+
+// Boxes are unlimited, so a plan containing one has no meaningful total capacity.
+const planHasBox = computed(() => planBinders.value.some(isStorageBox))
+
+// Reset transient header state whenever the active set changes (covers in-app
+// navigation and direct URL changes), so edit/confirm UI never leaks across sets.
+watch(currentPlanId, () => {
+  editingPlanName.value = false
+  showDeleteConfirm.value = false
+})
+
 const viewingBinder = computed(() =>
   selectedBinderForView.value ? bindersStore.getBinder(selectedBinderForView.value) : null
 )
@@ -116,6 +140,18 @@ const viewingBinder = computed(() =>
 const currentBinderPlacements = computed(() => {
   if (!viewingBinder.value || !placementResult.value) return []
   return placementResult.value.placements.filter(p => p.binderId === viewingBinder.value!.id)
+})
+
+// Segments with at least one card on the page(s) currently visible in the viewer.
+// Used to highlight the segment you're looking at; updates live as pages turn.
+const activeSegmentIds = computed(() => {
+  const ids = new Set<string>()
+  if (!viewingBinder.value || visiblePages.value.length === 0) return ids
+  const pages = new Set(visiblePages.value)
+  for (const p of currentBinderPlacements.value) {
+    if (pages.has(p.pageNumber)) ids.add(p.segmentId)
+  }
+  return ids
 })
 
 // ---- Binder viewer: card → slot mapping + the pages matrix (P10) ----
@@ -165,7 +201,7 @@ const viewingBinderPages = computed(() => binderLayout.value?.pages ?? [])
 
 // Uploaded binder cover for the viewing binder (shown on the cover pages).
 const viewingBinderCover = ref<string | null>(null)
-watch(() => viewingBinder.value?.id, async () => {
+watch([() => viewingBinder.value?.id, binderImageVersion], async () => {
   if (viewingBinderCover.value) {
     URL.revokeObjectURL(viewingBinderCover.value)
     viewingBinderCover.value = null
@@ -253,8 +289,8 @@ const sheetCard = computed(() => {
 
 // Suspend binder-spread nav (arrows/swipe) while any editor modal/sheet is open.
 const anyModalOpen = computed(() =>
-  sheetOpen.value || showCardSearch.value || showSetSelector.value || !!selectedSet.value ||
-  showBoxCardSelector.value || !!selectedSetForBox.value || showBinderForm.value || showNewSetDialog.value
+  sheetOpen.value || showCardSearch.value || !!addCardsMode.value ||
+  showBinderForm.value || showNewSetDialog.value
 )
 
 function onBinderSlotSelect(page: number, slot0: number) {
@@ -394,6 +430,7 @@ function selectPlan(plan: BinderPlan) {
   router.push(`/sets/${plan.id}`)
   showBinderForm.value = false
   editingBinder.value = null
+  showSetList.value = false
   window.scrollTo({ top: 0 })
 }
 
@@ -450,56 +487,30 @@ function removeBinder(binder: Binder) {
   }
 }
 
-function handleSetSelect(set: ScryfallSet) {
-  selectedSet.value = set
-  showSetSelector.value = false
-}
+function onAddCardsConfirm({ set, cardIds }: { set: ScryfallSet; cardIds: string[] }) {
+  if (!currentPlanId.value) {
+    addCardsMode.value = null
+    return
+  }
 
-function handleCardsConfirm(cardIds: string[]) {
-  if (!selectedSet.value || !currentPlanId.value) return
+  if (addCardsMode.value === 'box') {
+    // Add cards into the currently-viewed box, pinned to it and marked owned.
+    if (!selectedBinderForView.value) {
+      addCardsMode.value = null
+      return
+    }
+    const segment = segmentsStore.addSegment(set.name, set.code, cardIds)
+    segmentsStore.updateSegment(segment.id, { targetBinderId: selectedBinderForView.value })
+    plansStore.addSegmentToPlan(currentPlanId.value, segment.id)
+    const ownershipKeys = cardIds.map((_, index) => `${segment.id}:${index}`)
+    collectionStore.setMultipleOwned(ownershipKeys, true)
+  } else {
+    // Add as a regular plan segment.
+    const segment = segmentsStore.addSegment(set.name, set.code, cardIds)
+    plansStore.addSegmentToPlan(currentPlanId.value, segment.id)
+  }
 
-  const segment = segmentsStore.addSegment(
-    selectedSet.value.name,
-    selectedSet.value.code,
-    cardIds
-  )
-  plansStore.addSegmentToPlan(currentPlanId.value, segment.id)
-
-  selectedSet.value = null
-}
-
-function handleBoxSetSelect(set: ScryfallSet) {
-  selectedSetForBox.value = set
-  showBoxCardSelector.value = false
-}
-
-function handleBoxCardsConfirm(cardIds: string[]) {
-  if (!selectedSetForBox.value || !currentPlanId.value || !selectedBinderForView.value) return
-
-  // Create a segment with selected cards, targeted to the current box
-  const segment = segmentsStore.addSegment(
-    selectedSetForBox.value.name,
-    selectedSetForBox.value.code,
-    cardIds
-  )
-
-  // Set the segment to target this box
-  segmentsStore.updateSegment(segment.id, { targetBinderId: selectedBinderForView.value })
-
-  // Add segment to plan
-  plansStore.addSegmentToPlan(currentPlanId.value, segment.id)
-
-  // Mark all cards as owned
-  const ownershipKeys = cardIds.map((_, index) => `${segment.id}:${index}`)
-  collectionStore.setMultipleOwned(ownershipKeys, true)
-
-  // Reset state
-  selectedSetForBox.value = null
-}
-
-function cancelBoxCardPicker() {
-  selectedSetForBox.value = null
-  showBoxCardSelector.value = true
+  addCardsMode.value = null
 }
 
 function removeSegment(segment: Segment) {
@@ -699,6 +710,7 @@ function deletePlan() {
   router.push('/sets')
   selectedBinderForView.value = null
   placementResult.value = null
+  showDeleteConfirm.value = false
 }
 
 function addBinderForOverflow() {
@@ -706,52 +718,11 @@ function addBinderForOverflow() {
   editingBinder.value = null
 }
 
-function cancelCardPicker() {
-  selectedSet.value = null
-  showSetSelector.value = true
-}
-
 function handleKeyDown(event: KeyboardEvent) {
-  // Handle ESC key to close modals
+  // Handle ESC key to close modals. Dialog-based flows (add storage, add cards,
+  // new set, card search) close themselves via reka-ui; only the inline plan-name
+  // edit needs handling here.
   if (event.key === 'Escape') {
-    // Close modals in order of priority (most specific/topmost first)
-    if (showCardSearch.value) {
-      showCardSearch.value = false
-      insertTargetSlot.value = null
-      event.preventDefault()
-      return
-    }
-    if (selectedSetForBox.value) {
-      selectedSetForBox.value = null
-      event.preventDefault()
-      return
-    }
-    if (showBoxCardSelector.value) {
-      showBoxCardSelector.value = false
-      event.preventDefault()
-      return
-    }
-    if (selectedSet.value) {
-      selectedSet.value = null
-      event.preventDefault()
-      return
-    }
-    if (showSetSelector.value) {
-      showSetSelector.value = false
-      event.preventDefault()
-      return
-    }
-    if (showNewSetDialog.value) {
-      showNewSetDialog.value = false
-      event.preventDefault()
-      return
-    }
-    if (showBinderForm.value) {
-      showBinderForm.value = false
-      editingBinder.value = null
-      event.preventDefault()
-      return
-    }
     if (editingPlanName.value) {
       editingPlanName.value = false
       event.preventDefault()
@@ -796,7 +767,9 @@ onUnmounted(() => {
 <template>
   <div class="plan-editor">
     <aside class="sticky top-16 flex max-h-[calc(100dvh-4rem)] w-95 shrink-0 flex-col gap-6 overflow-y-auto border-r border-line bg-surface p-4">
-      <section class="flex flex-col gap-3">
+      <!-- Set switcher: the full set list. Shown when no set is selected, or when
+           the user taps back/switch from the detail view (drill-in navigation). -->
+      <section v-if="!currentPlan || showSetList" class="flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <h2 class="font-display text-lg font-bold tracking-tight">Sets</h2>
           <Button
@@ -816,7 +789,7 @@ onUnmounted(() => {
           <button
             v-for="plan in sortedPlans"
             :key="plan.id"
-            class="relative overflow-hidden rounded-md border px-3 py-2 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+            class="relative cursor-pointer overflow-hidden rounded-md border px-3 py-2 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
             :class="plan.id === currentPlanId
               ? 'border-brand text-foreground'
               : 'border-line text-ink-soft hover:bg-surface-2 hover:text-foreground'"
@@ -831,9 +804,21 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <template v-if="currentPlan">
+      <!-- Detail view: the selected set's working data. Replaces the set list so
+           storage/segments aren't buried below every other set. -->
+      <template v-else-if="currentPlan">
         <section class="flex flex-col gap-2">
           <div class="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              class="h-9 w-9 shrink-0"
+              title="All sets"
+              aria-label="All sets"
+              @click="showSetList = true"
+            >
+              <ArrowLeft :size="18" />
+            </Button>
             <template v-if="editingPlanName">
               <Input v-model="planNameInput" class="h-9" @keyup.enter="savePlanName" @keyup.escape="cancelEditPlanName" />
               <Button variant="ghost" size="icon" class="h-9 w-9" title="Save" aria-label="Save" @click="savePlanName"><Check :size="16" /></Button>
@@ -841,20 +826,24 @@ onUnmounted(() => {
             </template>
             <template v-else>
               <h2 class="min-w-0 flex-1 truncate font-display text-base font-bold tracking-tight">{{ currentPlan.name }}</h2>
-              <Button variant="ghost" size="icon" class="h-9 w-9" title="Rename" aria-label="Rename" @click="startEditPlanName"><Pencil :size="15" /></Button>
+              <Button variant="ghost" size="icon" class="h-9 w-9 shrink-0" title="Rename set" aria-label="Rename set" @click="startEditPlanName"><Pencil :size="15" /></Button>
+              <Button variant="ghost" size="icon" class="h-9 w-9 shrink-0 text-skipped hover:bg-(--skipped-soft) hover:text-skipped" title="Delete set" aria-label="Delete set" @click="showDeleteConfirm = true"><Trash2 :size="15" /></Button>
             </template>
           </div>
-          <Button v-if="!editingPlanName" variant="ghost" size="sm" class="self-start text-skipped" @click="deletePlan">
-            <Trash2 :size="15" /> Delete Set
-          </Button>
+          <p v-if="placementResult" class="text-sm text-ink-soft tabular-nums">
+            <template v-if="planHasBox">{{ placementResult.totalCards }} cards · unlimited capacity</template>
+            <template v-else>{{ placementResult.totalCards }} / {{ placementResult.totalCapacity }} capacity</template>
+          </p>
         </section>
 
         <section class="flex flex-col gap-2">
-          <h2 class="font-display text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">Storage</h2>
-          <Button variant="secondary" class="w-full" @click="showBinderForm = true; editingBinder = null">
-            <Plus :size="18" /> Add Storage
-          </Button>
-          <div class="flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <h2 class="font-display text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">Storage</h2>
+            <Button variant="ghost" size="icon" class="h-8 w-8" title="Add storage" aria-label="Add storage" @click="showBinderForm = true; editingBinder = null">
+              <Plus :size="18" />
+            </Button>
+          </div>
+          <div v-if="planBinders.length" class="flex flex-col gap-2">
             <BinderCard
               v-for="binder in planBinders"
               :key="binder.id"
@@ -867,19 +856,29 @@ onUnmounted(() => {
               @click="viewBinder(binder.id)"
             />
           </div>
+          <button
+            v-else
+            class="rounded-lg border border-dashed border-line px-3 py-4 text-left text-xs text-ink-faint outline-none transition-colors hover:border-line-strong hover:text-ink-soft focus-visible:ring-2 focus-visible:ring-ring"
+            @click="showBinderForm = true; editingBinder = null"
+          >
+            No storage yet. Add a binder or box to start placing cards.
+          </button>
         </section>
 
-        <section v-if="!viewingBinder || viewingBinder.type !== 'box'" class="flex flex-col gap-2">
-          <h2 class="font-display text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">Segments</h2>
-          <Button variant="secondary" class="w-full" @click="showSetSelector = true">
-            <Plus :size="18" /> Add Segment
-          </Button>
-          <div class="flex flex-col gap-2">
+        <section v-if="hasStorage && (!viewingBinder || viewingBinder.type !== 'box')" class="flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <h2 class="font-display text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">Segments</h2>
+            <Button variant="ghost" size="icon" class="h-8 w-8" title="Add segment" aria-label="Add segment" @click="addCardsMode = 'segment'">
+              <Plus :size="18" />
+            </Button>
+          </div>
+          <div v-if="planSegments.length" class="flex flex-col gap-2">
             <SegmentCard
               v-for="segment in planSegments"
               :key="segment.id"
               :segment="segment"
               :binders="planBinders"
+              :selected="activeSegmentIds.has(segment.id)"
               @update-name="updateSegmentName"
               @remove="removeSegment"
               @update-offset="updateSegmentOffset"
@@ -889,14 +888,17 @@ onUnmounted(() => {
               @move-down="moveSegmentDown"
             />
           </div>
+          <button
+            v-else
+            class="rounded-lg border border-dashed border-line px-3 py-4 text-left text-xs text-ink-faint outline-none transition-colors hover:border-line-strong hover:text-ink-soft focus-visible:ring-2 focus-visible:ring-ring"
+            @click="addCardsMode = 'segment'"
+          >
+            No segments yet. Add a set's cards to track and place them.
+          </button>
         </section>
 
-        <section v-if="placementResult" class="flex flex-col gap-2">
-          <h2 class="font-display text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">Summary</h2>
-          <p class="text-sm text-ink-soft tabular-nums">
-            {{ placementResult.totalCards }} cards / {{ placementResult.totalCapacity }} capacity
-          </p>
-          <div v-if="placementResult.overflow.length > 0" class="rounded-lg border border-[color-mix(in_srgb,var(--skipped)_35%,transparent)] bg-(--skipped-soft) p-3 text-sm">
+        <section v-if="placementResult && placementResult.overflow.length > 0" class="flex flex-col gap-2">
+          <div class="rounded-lg border border-[color-mix(in_srgb,var(--skipped)_35%,transparent)] bg-(--skipped-soft) p-3 text-sm">
             <strong class="text-skipped">Overflow: {{ totalOverflowCount }} cards</strong>
             <ul class="mt-1 list-disc pl-5 text-ink-soft">
               <li v-for="o in placementResult.overflow" :key="o.segmentId">
@@ -935,18 +937,19 @@ onUnmounted(() => {
             <div
               v-for="plan in sortedPlans"
               :key="plan.id"
-              class="rounded-xl border border-line bg-surface p-4 shadow-(--shadow-1) transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-(--shadow-2)"
+              class="cursor-pointer rounded-xl border border-line bg-surface p-4 shadow-(--shadow-1) transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-(--shadow-2)"
+              @click="selectPlan(plan)"
             >
-              <div class="flex cursor-pointer items-start justify-between gap-3" @click="selectPlan(plan)">
+              <div class="flex items-start justify-between gap-3">
                 <h3 class="min-w-0 truncate font-semibold">{{ plan.name }}</h3>
                 <span class="shrink-0 text-xs text-ink-faint tabular-nums">{{ planOwnedPercentage.get(plan.id) ?? 0 }}% complete</span>
               </div>
 
-              <div class="mt-2 cursor-pointer text-sm text-ink-soft tabular-nums" @click="selectPlan(plan)">
+              <div class="mt-2 text-sm text-ink-soft tabular-nums">
                 Segments: {{ plan.segmentIds.length }}
               </div>
 
-              <div class="mt-2 h-2 cursor-pointer overflow-hidden rounded-full bg-surface-2" @click="selectPlan(plan)">
+              <div class="mt-2 h-2 overflow-hidden rounded-full bg-surface-2">
                 <div class="h-full rounded-full" :style="{ width: `${planOwnedPercentage.get(plan.id) ?? 0}%`, background: 'var(--accent-grad)' }"></div>
               </div>
 
@@ -960,59 +963,12 @@ onUnmounted(() => {
                     :planned-cards="allPlansBinderStats.get(binder.id)?.planned"
                     :owned-cards="allPlansBinderStats.get(binder.id)?.owned ?? 0"
                     :show-actions="false"
-                    @click="selectPlan(plan); viewBinder(binder.id)"
+                    @click.stop="selectPlan(plan); viewBinder(binder.id)"
                   />
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </template>
-
-      <template v-else-if="showBinderForm">
-        <div class="mx-auto w-full max-w-xl">
-          <h2 class="mb-4 font-display text-xl font-bold tracking-tight">{{ editingBinder ? 'Edit' : 'Add' }} Storage</h2>
-          <BinderForm
-            :binder="editingBinder ?? undefined"
-            @submit="handleBinderSubmit"
-            @cancel="showBinderForm = false; editingBinder = null"
-          />
-        </div>
-      </template>
-
-      <template v-else-if="showSetSelector">
-        <div class="mx-auto w-full max-w-xl">
-          <h2 class="mb-4 font-display text-xl font-bold tracking-tight">Select set</h2>
-          <SetSelector @select="handleSetSelect" />
-          <Button variant="ghost" class="mt-4" @click="showSetSelector = false">Cancel</Button>
-        </div>
-      </template>
-
-      <template v-else-if="selectedSet">
-        <div class="modal-content full-height">
-          <CardPicker
-            :set="selectedSet"
-            @confirm="handleCardsConfirm"
-            @cancel="cancelCardPicker"
-          />
-        </div>
-      </template>
-
-      <template v-else-if="showBoxCardSelector">
-        <div class="mx-auto w-full max-w-xl">
-          <h2 class="mb-4 font-display text-xl font-bold tracking-tight">Select set to add cards from</h2>
-          <SetSelector @select="handleBoxSetSelect" />
-          <Button variant="ghost" class="mt-4" @click="showBoxCardSelector = false">Cancel</Button>
-        </div>
-      </template>
-
-      <template v-else-if="selectedSetForBox">
-        <div class="card-picker-container">
-          <BoxCardPicker
-            :set="selectedSetForBox"
-            @confirm="handleBoxCardsConfirm"
-            @cancel="cancelBoxCardPicker"
-          />
         </div>
       </template>
 
@@ -1031,6 +987,14 @@ onUnmounted(() => {
               </div>
             </label>
             <div class="flex-1"></div>
+            <CardSizeControl
+              v-if="viewingBinder.type === 'box'"
+              v-model="boxCardSize"
+              :min="120"
+              :max="240"
+              :step="10"
+              class="hidden sm:flex"
+            />
             <Button
               v-if="viewingBinder.type === 'binder'"
               size="sm"
@@ -1039,7 +1003,7 @@ onUnmounted(() => {
             >
               {{ allBinderCardsOwned ? 'Mark binder unowned' : 'Mark binder owned' }}
             </Button>
-            <Button v-if="viewingBinder.type === 'box'" size="sm" @click="showBoxCardSelector = true">
+            <Button v-if="viewingBinder.type === 'box'" size="sm" @click="addCardsMode = 'box'">
               <Plus :size="16" /> Add cards
             </Button>
           </div>
@@ -1064,6 +1028,7 @@ onUnmounted(() => {
               @insert="onBinderSlotInsert"
               @quick-own="onBinderQuickOwn"
               @edge="onBinderEdge"
+              @view-change="visiblePages = $event"
               @mark-page-owned="onMarkPageOwned"
             />
           </div>
@@ -1073,14 +1038,32 @@ onUnmounted(() => {
             <div v-if="boxItems.length === 0" class="p-4 text-sm text-ink-soft">
               This box is empty. Use "Add cards" above to add cards from a set.
             </div>
-            <BoxView v-else :items="boxItems" @select="onBoxSlotSelect" @toggle-owned="onBoxQuickOwn" />
+            <BoxView v-else :items="boxItems" :tile-size="boxCardSize" @select="onBoxSlotSelect" @toggle-owned="onBoxQuickOwn" />
           </div>
         </div>
       </template>
 
       <template v-else>
-        <div class="empty-state">
-          <p>Add storage and segments, then click storage to view placements.</p>
+        <div class="mx-auto max-w-xl py-16 text-center">
+          <h2 class="font-display text-2xl font-bold tracking-tight">Add storage to get started</h2>
+          <p class="mt-3 text-ink-soft">
+            A set needs a binder or storage box before any cards can be placed. Add storage first,
+            then add segments to track specific MTG sets from Scryfall.
+          </p>
+          <Button class="mt-6" @click="showBinderForm = true; editingBinder = null">
+            <Plus :size="18" /> Add Storage
+          </Button>
+          <div
+            v-if="planSegments.length > 0"
+            class="mt-6 flex items-start gap-2.5 rounded-xl border border-line bg-(--accent-soft) p-4 text-left text-sm text-ink-soft"
+          >
+            <Lightbulb :size="18" class="mt-0.5 shrink-0 text-brand" />
+            <span>
+              <strong class="text-foreground">Heads up:</strong>
+              this set has {{ planSegments.length }} segment{{ planSegments.length === 1 ? '' : 's' }}
+              with nowhere to go yet. Once you add storage, their cards will be placed automatically.
+            </span>
+          </div>
         </div>
       </template>
     </main>
@@ -1098,6 +1081,29 @@ onUnmounted(() => {
       @submit="handleNewSetSubmit"
       @cancel="handleNewSetCancel"
     />
+
+    <StorageDialog
+      v-if="showBinderForm"
+      :binder="editingBinder"
+      @submit="handleBinderSubmit"
+      @cancel="showBinderForm = false; editingBinder = null"
+    />
+
+    <AddCardsDialog
+      v-if="addCardsMode"
+      @confirm="onAddCardsConfirm"
+      @cancel="addCardsMode = null"
+    />
+
+    <Dialog v-if="currentPlan" v-model:open="showDeleteConfirm" title="Delete this set?">
+      <p class="text-sm text-ink-soft">
+        Deleting <strong class="text-foreground">{{ currentPlan.name }}</strong> removes the set and all its segments. This can't be undone.
+      </p>
+      <template #footer>
+        <Button variant="ghost" @click="showDeleteConfirm = false">Cancel</Button>
+        <Button variant="destructive" @click="deletePlan">Delete set</Button>
+      </template>
+    </Dialog>
 
     <CardActionSheet
       v-if="sheetCard"
@@ -1131,31 +1137,5 @@ onUnmounted(() => {
   flex: 1;
   min-width: 0;
   padding: 1rem;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--ink-soft);
-  max-width: 600px;
-  margin: 0 auto;
-  text-align: center;
-  padding: 2rem;
-}
-
-.modal-content {
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-.card-picker-container {
-  height: calc(100vh - 6rem);
-  padding: 1rem;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 </style>

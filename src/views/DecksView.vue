@@ -9,7 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog } from '@/components/ui/dialog'
 import { SegmentedControl } from '@/components/ui/segmented'
-import { Layers, Download, Trash2, ArrowLeft, Check } from 'lucide-vue-next'
+import CardSizeControl from '@/components/common/CardSizeControl.vue'
+import { useCardSize } from '@/composables/useCardSize'
+import { Layers, Download, Trash2, ArrowLeft, Check, ImageIcon, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 
 interface CollectionMatch {
   card: ScryfallCard
@@ -48,8 +50,8 @@ const importError = ref('')
 // Card data for selected deck
 const deckCardData = ref<Map<string, ScryfallCard>>(new Map())
 const isLoadingCards = ref(false)
-const deckCardSize = ref<'s' | 'm' | 'l'>('m')
-const deckCardMin = computed(() => ({ s: 120, m: 160, l: 210 })[deckCardSize.value])
+// User-adjustable card size (tile min-width, px), persisted for this section.
+const deckCardMin = useCardSize('spellbinder-cardsize-decks', 160)
 
 // Card search/linking modal state
 const showSearchModal = ref(false)
@@ -65,6 +67,36 @@ const replaceSearchResults = ref<CollectionMatch[]>([])
 // Scryfall search results (all printings of a card)
 const scryfallSearchResults = ref<ScryfallCard[]>([])
 const isSearchingScryfall = ref(false)
+
+// Enlarged-card preview overlay — a lightweight in-dialog overlay (not a nested dialog), shared by all
+// three tabs. Tracked by index so the user can page through results with the nav buttons / arrow keys.
+// The list and the optional select key depend on the active tab: All Printings is read-only; the
+// collection tabs carry a cardKey so the preview can link that copy via "Select this card".
+interface PreviewItem { card: ScryfallCard; cardKey?: string }
+const previewIndex = ref<number | null>(null)
+const previewItems = computed<PreviewItem[]>(() => {
+  if (searchMode.value === 'scryfall') return scryfallSearchResults.value.map(card => ({ card }))
+  if (searchMode.value === 'any') return replaceSearchResults.value.map(m => ({ card: m.card, cardKey: m.cardKey }))
+  return collectionMatches.value.map(m => ({ card: m.card, cardKey: m.cardKey }))
+})
+const previewItem = computed<PreviewItem | null>(() =>
+  previewIndex.value === null ? null : previewItems.value[previewIndex.value] ?? null
+)
+const previewCard = computed<ScryfallCard | null>(() => previewItem.value?.card ?? null)
+const previewImage = computed(() => {
+  const c = previewCard.value
+  if (!c) return undefined
+  return c.image_uris?.large || c.image_uris?.normal
+    || c.card_faces?.[0]?.image_uris?.large || c.card_faces?.[0]?.image_uris?.normal
+})
+
+// Step through the list, clamping at the ends (no wrap-around)
+function previewStep(delta: number) {
+  if (previewIndex.value === null) return
+  const next = previewIndex.value + delta
+  if (next < 0 || next >= previewItems.value.length) return
+  previewIndex.value = next
+}
 
 // All cards in collection (for searching)
 const allCollectionCards = ref<Map<string, CollectionCardEntry>>(new Map())
@@ -178,6 +210,11 @@ async function loadCollectionCards() {
   }
 }
 
+// Capitalize the first letter (e.g. Scryfall rarity "rare" → "Rare")
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
 // Check if a card is an art card (should be excluded from searches)
 function isArtCard(card: ScryfallCard): boolean {
   // Art cards have type_line of just "Card", contain "Art Series", or set_name contains "Art Series"
@@ -217,6 +254,7 @@ async function openCardSearch(card: Deck['cards'][0]) {
   replaceSearchQuery.value = ''
   replaceSearchResults.value = []
   scryfallSearchResults.value = []
+  previewIndex.value = null
 
   // Start Scryfall search in the background
   searchScryfallPrintings(card.name)
@@ -316,14 +354,6 @@ function linkCardToCollection(deckCardId: string, cardKey: string) {
   searchingCard.value = null
 }
 
-// Link a deck card to a specific Scryfall printing
-function linkToScryfallCard(deckCardId: string, scryfallId: string) {
-  if (!selectedDeck.value) return
-  decksStore.linkCardToScryfall(selectedDeck.value.id, deckCardId, scryfallId)
-  showSearchModal.value = false
-  searchingCard.value = null
-}
-
 // Unlink a deck card
 function unlinkCard(deckCardId: string) {
   if (!selectedDeck.value) return
@@ -414,9 +444,59 @@ watch(selectedDeck, (deck) => {
   }
 }, { immediate: true })
 
+// --- Deck-list commander thumbnails ---
+// The list view loads no per-card data otherwise, so batch-fetch one image per
+// deck: its Commander(s), or the first card if the deck has no Commander category.
+const listCoverData = ref<Map<string, ScryfallCard>>(new Map())
+
+function getDeckCoverCards(deck: Deck): Deck['cards'] {
+  const commanders = deck.cards.filter(c => c.category === 'Commander')
+  if (commanders.length > 0) return commanders
+  const first = deck.cards[0]
+  return first ? [first] : []
+}
+
+function getCoverImage(card: Deck['cards'][0]): string | undefined {
+  const c = listCoverData.value.get(card.scryfallId)
+  return c?.image_uris?.small || c?.card_faces?.[0]?.image_uris?.small
+}
+
+async function loadListCovers() {
+  const ids = new Set<string>()
+  for (const deck of decksStore.decks) {
+    for (const card of getDeckCoverCards(deck)) ids.add(card.scryfallId)
+  }
+  if (ids.size === 0) {
+    listCoverData.value = new Map()
+    return
+  }
+  try {
+    listCoverData.value = await getCachedCards(Array.from(ids))
+  } catch (error) {
+    console.error('Failed to load deck cover cards:', error)
+  }
+}
+
+// Reload when a deck is added/removed (length change covers import + delete).
+watch(() => decksStore.decks.length, loadListCovers, { immediate: true })
+
 // Handle Escape key to close modals
 function handleModalKeydown(event: KeyboardEvent) {
+  // Arrow keys page through printings while the enlarged preview is open
+  if (previewIndex.value !== null && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+    previewStep(event.key === 'ArrowRight' ? 1 : -1)
+    event.preventDefault()
+    event.stopPropagation()
+    return
+  }
   if (event.key === 'Escape') {
+    // Close the enlarged preview first (if open), then the dialogs
+    if (previewIndex.value !== null) {
+      previewIndex.value = null
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     // Close search modal first (if open), then import modal
     if (showSearchModal.value) {
       showSearchModal.value = false
@@ -432,11 +512,16 @@ function handleModalKeydown(event: KeyboardEvent) {
 // Add/remove keyboard listener when any modal opens/closes
 watch([showImportModal, showSearchModal], ([importOpen, searchOpen]) => {
   if (importOpen || searchOpen) {
-    window.addEventListener('keydown', handleModalKeydown)
+    // Capture phase so the preview can swallow Escape before reka-ui closes the dialog
+    window.addEventListener('keydown', handleModalKeydown, true)
   } else {
-    window.removeEventListener('keydown', handleModalKeydown)
+    window.removeEventListener('keydown', handleModalKeydown, true)
   }
 })
+
+// Dismiss the enlarged preview when the dialog closes or the user switches tabs.
+watch(showSearchModal, (open) => { if (!open) previewIndex.value = null })
+watch(searchMode, () => { previewIndex.value = null })
 
 // Group cards by category, sorted like Archidekt (Commander first, then alphabetical)
 const groupedCards = computed(() => {
@@ -539,6 +624,24 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
           @click="selectDeck(deck)"
           @keydown.enter="selectDeck(deck)"
         >
+          <!-- Commander thumbnail(s) — fanned for partner decks, first card as fallback -->
+          <div class="flex shrink-0 items-center">
+            <template v-if="getDeckCoverCards(deck).length">
+              <div
+                v-for="(cc, i) in getDeckCoverCards(deck)"
+                :key="cc.id"
+                class="grid h-21 w-15 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-surface-2 shadow-(--shadow-1)"
+                :class="i > 0 && '-ml-9'"
+                :style="{ zIndex: getDeckCoverCards(deck).length - i }"
+              >
+                <img v-if="getCoverImage(cc)" :src="getCoverImage(cc)" :alt="cc.name" loading="lazy" class="h-full w-full object-cover" />
+                <ImageIcon v-else :size="18" class="text-ink-faint" aria-hidden="true" />
+              </div>
+            </template>
+            <div v-else class="grid h-21 w-15 shrink-0 place-items-center rounded-md border border-line bg-surface-2">
+              <ImageIcon :size="18" class="text-ink-faint" aria-hidden="true" />
+            </div>
+          </div>
           <div class="min-w-0 flex-1">
             <h3 class="truncate font-semibold">{{ deck.name }}</h3>
             <p class="text-sm text-ink-faint tabular-nums">{{ deck.cards.length }} unique cards</p>
@@ -567,18 +670,7 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
     <main v-else class="main-content">
       <div class="mx-auto max-w-6xl">
         <div class="mb-5 flex items-center justify-end">
-          <div class="flex items-center gap-1">
-            <span class="mr-1 text-xs text-ink-faint">Card size</span>
-            <button
-              v-for="s in (['s', 'm', 'l'] as const)"
-              :key="s"
-              type="button"
-              :aria-pressed="deckCardSize === s"
-              class="grid h-7 w-7 place-items-center rounded-md border text-xs font-semibold uppercase outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
-              :class="deckCardSize === s ? 'border-brand text-brand' : 'border-line text-ink-soft hover:text-foreground'"
-              @click="deckCardSize = s"
-            >{{ s }}</button>
-          </div>
+          <CardSizeControl v-model="deckCardMin" :min="110" :max="240" :step="10" />
         </div>
 
         <div v-if="isLoadingCards" class="py-10 text-center text-ink-soft">Loading cards…</div>
@@ -640,42 +732,43 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
     <Dialog
       v-if="searchingCard"
       v-model:open="showSearchModal"
-      size="xl"
+      size="2xl"
       :title="searchMode === 'scryfall' ? `All printings of “${searchingCard.name}”` : (searchMode === 'same' ? `Find “${searchingCard.name}”` : 'Replace with any card')"
-      :description="searchMode === 'scryfall' ? 'Pick any printing from Scryfall for this deck slot.' : (searchMode === 'same' ? 'Pick a copy from your collection to link to this slot.' : 'Search your collection for a replacement card.')"
+      :description="searchMode === 'scryfall' ? 'Browse every printing to compare the art and find the set you want.' : (searchMode === 'same' ? 'Pick a copy from your collection to link to this slot.' : 'Search your collection for a replacement card.')"
     >
+      <!-- Fixed-height column so the dialog dimensions stay constant across tabs; only the results scroll -->
+      <div class="relative flex h-[60vh] flex-col">
       <SegmentedControl
         v-model="searchMode"
         :options="[{ value: 'same', label: 'In Collection' }, { value: 'any', label: 'Any in Collection' }, { value: 'scryfall', label: 'All Printings' }]"
-        class="mb-4"
+        class="mb-4 shrink-0"
       />
 
-      <div v-if="searchMode === 'any'" class="mb-3">
+      <div v-if="searchMode === 'any'" class="mb-3 shrink-0">
         <label for="link-search" class="sr-only">Search cards by name</label>
         <Input id="link-search" v-model="replaceSearchQuery" placeholder="Search cards by name…" @input="searchCollectionCards" />
         <p v-if="replaceSearchQuery.length > 0 && replaceSearchQuery.length < 2" class="mt-1 text-xs text-ink-faint">Type at least 2 characters to search.</p>
       </div>
 
-      <div class="max-h-[60vh] overflow-y-auto">
+      <div class="min-h-0 flex-1 overflow-y-auto">
         <div v-if="isSearchingCollection" class="py-8 text-center text-ink-soft">Searching collection…</div>
 
-        <!-- In-collection (same card) -->
+        <!-- In-collection (same card) — 3-up grid; card name is in the dialog header -->
         <template v-else-if="searchMode === 'same'">
           <p v-if="collectionMatches.length === 0" class="py-8 text-center text-ink-soft">No copies of this card found in your collection.</p>
-          <div v-else class="flex flex-col gap-2">
+          <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <button
-              v-for="match in collectionMatches"
+              v-for="(match, index) in collectionMatches"
               :key="match.cardKey"
-              class="flex w-full items-center gap-3 rounded-lg border border-line bg-surface p-2.5 text-left outline-none transition-colors hover:border-brand hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
-              @click="linkCardToCollection(searchingCard!.id, match.cardKey)"
+              class="flex cursor-zoom-in gap-3 rounded-lg border border-line bg-surface p-3 text-left outline-none transition-colors hover:border-brand hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
+              @click="previewIndex = index"
             >
-              <img v-if="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small" :src="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small" :alt="match.card.name" class="h-14 w-10 shrink-0 rounded object-cover" />
-              <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-semibold">{{ match.card.name }}</div>
-                <div class="truncate text-xs text-ink-faint">{{ match.card.set_name }}</div>
-                <div class="text-[11px] text-ink-faint tabular-nums">{{ match.card.set.toUpperCase() }} {{ match.card.collector_number.padStart(4, '0') }}</div>
+              <img v-if="match.card.image_uris?.normal || match.card.card_faces?.[0]?.image_uris?.normal" :src="match.card.image_uris?.normal || match.card.card_faces?.[0]?.image_uris?.normal" :alt="match.card.name" loading="lazy" class="aspect-63/88 w-28 shrink-0 rounded-md object-cover" />
+              <div class="flex min-w-0 flex-1 flex-col gap-1">
+                <div class="font-semibold leading-snug">{{ match.card.set_name }}</div>
+                <div class="text-xs text-ink-faint tabular-nums">{{ match.card.set.toUpperCase() }} · #{{ match.card.collector_number }}</div>
+                <span class="mt-auto inline-flex w-fit items-center rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold" :style="match.isOwned ? 'color:var(--owned);background:var(--owned-soft)' : 'color:var(--missing)'">{{ match.isOwned ? 'Owned' : 'Not owned' }}</span>
               </div>
-              <span class="shrink-0 text-xs font-semibold" :style="match.isOwned ? 'color:var(--owned)' : 'color:var(--missing)'">{{ match.isOwned ? 'Owned' : 'Not owned' }}</span>
             </button>
           </div>
         </template>
@@ -684,46 +777,110 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
         <template v-else-if="searchMode === 'any'">
           <p v-if="replaceSearchQuery.length < 2" class="py-8 text-center text-ink-soft">Enter a card name to search your collection.</p>
           <p v-else-if="replaceSearchResults.length === 0" class="py-8 text-center text-ink-soft">No cards found matching “{{ replaceSearchQuery }}”.</p>
-          <div v-else class="flex flex-col gap-2">
+          <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <button
-              v-for="match in replaceSearchResults"
+              v-for="(match, index) in replaceSearchResults"
               :key="match.cardKey"
-              class="flex w-full items-center gap-3 rounded-lg border border-line bg-surface p-2.5 text-left outline-none transition-colors hover:border-brand hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
-              @click="linkCardToCollection(searchingCard!.id, match.cardKey)"
+              class="flex cursor-zoom-in gap-3 rounded-lg border border-line bg-surface p-3 text-left outline-none transition-colors hover:border-brand hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
+              @click="previewIndex = index"
             >
-              <img v-if="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small" :src="match.card.image_uris?.small || match.card.card_faces?.[0]?.image_uris?.small" :alt="match.card.name" class="h-14 w-10 shrink-0 rounded object-cover" />
-              <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-semibold">{{ match.card.name }}</div>
-                <div class="truncate text-xs text-ink-faint">{{ match.card.set_name }}</div>
-                <div class="text-[11px] text-ink-faint tabular-nums">{{ match.card.set.toUpperCase() }} {{ match.card.collector_number.padStart(4, '0') }}</div>
+              <img v-if="match.card.image_uris?.normal || match.card.card_faces?.[0]?.image_uris?.normal" :src="match.card.image_uris?.normal || match.card.card_faces?.[0]?.image_uris?.normal" :alt="match.card.name" loading="lazy" class="aspect-63/88 w-28 shrink-0 rounded-md object-cover" />
+              <div class="flex min-w-0 flex-1 flex-col gap-1">
+                <div class="font-semibold leading-snug">{{ match.card.name }}</div>
+                <div class="text-sm text-ink-soft">{{ match.card.set_name }}</div>
+                <div class="text-xs text-ink-faint tabular-nums">{{ match.card.set.toUpperCase() }} · #{{ match.card.collector_number }}</div>
+                <span class="mt-auto inline-flex w-fit items-center rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold" :style="match.isOwned ? 'color:var(--owned);background:var(--owned-soft)' : 'color:var(--missing)'">{{ match.isOwned ? 'Owned' : 'Not owned' }}</span>
               </div>
-              <span class="shrink-0 text-xs font-semibold" :style="match.isOwned ? 'color:var(--owned)' : 'color:var(--missing)'">{{ match.isOwned ? 'Owned' : 'Not owned' }}</span>
             </button>
-            <p v-if="replaceSearchResults.length >= 50" class="py-2 text-center text-xs text-ink-faint">Showing first 50 results — refine your search for more.</p>
+            <p v-if="replaceSearchResults.length >= 50" class="col-span-full py-2 text-center text-xs text-ink-faint">Showing first 50 results — refine your search for more.</p>
           </div>
         </template>
 
-        <!-- All printings (Scryfall) -->
+        <!-- All printings (Scryfall) — read-only reference: browse the art and set of every printing -->
         <template v-else>
           <div v-if="isSearchingScryfall" class="py-8 text-center text-ink-soft">Searching Scryfall…</div>
           <p v-else-if="scryfallSearchResults.length === 0" class="py-8 text-center text-ink-soft">No printings found on Scryfall.</p>
-          <div v-else class="flex flex-col gap-2">
+          <!-- Card name is in the dialog header, so panels show set details only. Click → enlarge preview. -->
+          <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <button
-              v-for="card in scryfallSearchResults"
+              v-for="(card, index) in scryfallSearchResults"
               :key="card.id"
-              class="flex w-full items-center gap-3 rounded-lg border border-line bg-surface p-2.5 text-left outline-none transition-colors hover:border-brand hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
-              @click="linkToScryfallCard(searchingCard!.id, card.id)"
+              type="button"
+              class="flex cursor-zoom-in gap-3 rounded-lg border border-line bg-surface p-3 text-left outline-none transition-colors hover:border-line-strong focus-visible:ring-2 focus-visible:ring-ring"
+              @click="previewIndex = index"
             >
-              <img v-if="card.image_uris?.small || card.card_faces?.[0]?.image_uris?.small" :src="card.image_uris?.small || card.card_faces?.[0]?.image_uris?.small" :alt="card.name" class="h-14 w-10 shrink-0 rounded object-cover" />
-              <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-semibold">{{ card.name }}</div>
-                <div class="truncate text-xs text-ink-faint">{{ card.set_name }}</div>
-                <div class="text-[11px] text-ink-faint tabular-nums">{{ card.set.toUpperCase() }} {{ card.collector_number.padStart(4, '0') }}</div>
+              <img
+                v-if="card.image_uris?.normal || card.card_faces?.[0]?.image_uris?.normal"
+                :src="card.image_uris?.normal || card.card_faces?.[0]?.image_uris?.normal"
+                :alt="card.name"
+                loading="lazy"
+                class="aspect-63/88 w-28 shrink-0 rounded-md object-cover"
+              />
+              <div v-else class="grid aspect-63/88 w-28 shrink-0 place-items-center rounded-md bg-surface-2 p-2 text-center text-xs text-ink-faint">{{ card.name }}</div>
+              <div class="flex min-w-0 flex-1 flex-col gap-1">
+                <div class="font-semibold leading-snug">{{ card.set_name }}</div>
+                <div class="text-xs text-ink-faint tabular-nums">{{ card.set.toUpperCase() }} · #{{ card.collector_number }}</div>
+                <div class="text-xs text-ink-faint">{{ capitalize(card.rarity) }}</div>
+                <span
+                  v-if="findExactMatch(card.id) !== null"
+                  class="mt-auto inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                  style="color:var(--owned); background:var(--owned-soft)"
+                >In your collection</span>
               </div>
-              <span class="shrink-0 text-xs font-semibold" :style="findExactMatch(card.id) !== null ? 'color:var(--owned)' : 'color:var(--missing)'">{{ findExactMatch(card.id) !== null ? 'In collection' : 'Not in collection' }}</span>
             </button>
           </div>
         </template>
+      </div>
+
+      <!-- Enlarged-card preview: blurs the grid behind. Click anywhere / Esc to dismiss; ←/→ or buttons to page. -->
+      <div
+        v-if="previewCard"
+        class="absolute inset-0 z-20 flex cursor-zoom-out flex-col items-center justify-center gap-3 bg-surface/85 p-4 backdrop-blur-md"
+        @click="previewIndex = null"
+      >
+        <img
+          v-if="previewImage"
+          :src="previewImage"
+          :alt="previewCard.name"
+          class="min-h-0 w-auto max-w-full flex-1 rounded-xl object-contain shadow-(--shadow-2)"
+        />
+        <div class="shrink-0 text-center">
+          <div class="text-sm font-semibold">{{ previewCard.set_name }}</div>
+          <div class="text-xs text-ink-soft tabular-nums">{{ previewCard.set.toUpperCase() }} · #{{ previewCard.collector_number }} · {{ capitalize(previewCard.rarity) }}</div>
+          <div v-if="previewItems.length > 1" class="mt-1 text-xs text-ink-faint tabular-nums">{{ (previewIndex ?? 0) + 1 }} / {{ previewItems.length }}</div>
+        </div>
+
+        <!-- Collection tabs only: commit this card and close the dialog -->
+        <Button
+          v-if="previewItem?.cardKey"
+          class="shrink-0"
+          @click.stop="linkCardToCollection(searchingCard!.id, previewItem!.cardKey!)"
+        >
+          <Check :size="16" /> Select this card
+        </Button>
+
+        <!-- Page between results (clamped at the ends) -->
+        <button
+          v-if="previewItems.length > 1"
+          type="button"
+          :disabled="(previewIndex ?? 0) === 0"
+          class="absolute left-3 top-1/2 grid h-11 w-11 -translate-y-1/2 cursor-pointer place-items-center rounded-full border border-line bg-surface text-ink-soft shadow-(--shadow-1) outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-30 disabled:hover:bg-surface disabled:hover:text-ink-soft"
+          aria-label="Previous card"
+          @click.stop="previewStep(-1)"
+        >
+          <ChevronLeft :size="22" />
+        </button>
+        <button
+          v-if="previewItems.length > 1"
+          type="button"
+          :disabled="(previewIndex ?? 0) === previewItems.length - 1"
+          class="absolute right-3 top-1/2 grid h-11 w-11 -translate-y-1/2 cursor-pointer place-items-center rounded-full border border-line bg-surface text-ink-soft shadow-(--shadow-1) outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-30 disabled:hover:bg-surface disabled:hover:text-ink-soft"
+          aria-label="Next card"
+          @click.stop="previewStep(1)"
+        >
+          <ChevronRight :size="22" />
+        </button>
+      </div>
       </div>
 
       <template #footer>

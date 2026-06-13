@@ -1,5 +1,12 @@
+import { ref } from 'vue'
+
 const DB_NAME = 'spellbinder-cache'
 const DB_VERSION = 2 // Increment version to add new store
+
+// Bumped whenever a cover image is saved or deleted. Components that render a
+// cover watch this so every instance reloads (add / replace / remove), since the
+// image lives in IndexedDB and isn't otherwise reactive.
+export const binderImageVersion = ref(0)
 
 interface BinderImageData {
   binderId: string
@@ -149,7 +156,10 @@ export async function saveBinderImage(
 
     store.put(data)
 
-    transaction.oncomplete = () => resolve()
+    transaction.oncomplete = () => {
+      binderImageVersion.value++
+      resolve()
+    }
     transaction.onerror = () => reject(transaction.error)
   })
 }
@@ -186,7 +196,10 @@ export async function deleteBinderImage(binderId: string): Promise<void> {
     const store = transaction.objectStore('binderImages')
     store.delete(binderId)
 
-    transaction.oncomplete = () => resolve()
+    transaction.oncomplete = () => {
+      binderImageVersion.value++
+      resolve()
+    }
     transaction.onerror = () => reject(transaction.error)
   })
 }

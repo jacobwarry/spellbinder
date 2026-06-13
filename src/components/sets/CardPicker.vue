@@ -4,12 +4,18 @@ import type { ScryfallCard, ScryfallSet } from '@/types'
 import { fetchSetCards, getCardImageUri, sortByCollectorNumber } from '@/api/scryfall'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import CardSizeControl from '@/components/common/CardSizeControl.vue'
+import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import { useCardSize } from '@/composables/useCardSize'
 import { Check } from 'lucide-vue-next'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   set: ScryfallSet
   initialSelection?: string[]
-}>()
+  cancelLabel?: string
+}>(), {
+  cancelLabel: 'Cancel'
+})
 
 const emit = defineEmits<{
   confirm: [cardIds: string[]]
@@ -21,6 +27,9 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const selectedIds = ref<Set<string>>(new Set(props.initialSelection ?? []))
 const searchQuery = ref('')
+
+// User-adjustable card size (tile min-width, px), persisted across picker opens.
+const cardSize = useCardSize('spellbinder-cardsize-picker', 150)
 
 const filteredCards = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
@@ -71,24 +80,27 @@ function confirm() {
   <div class="flex h-full flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h3 class="font-display text-lg font-bold tracking-tight">{{ set.name }}</h3>
-      <div class="flex items-center gap-2">
-        <Button variant="outline" size="sm" @click="selectAll">Select all</Button>
-        <Button variant="outline" size="sm" @click="selectNone">Select none</Button>
-        <span class="text-sm tabular-nums text-ink-soft">{{ selectedIds.size }} selected</span>
-      </div>
+      <span class="text-sm tabular-nums text-ink-soft">{{ selectedIds.size }} selected</span>
     </div>
 
-    <Input v-model="searchQuery" placeholder="Search cards…" />
+    <div class="flex flex-wrap items-center gap-2.5">
+      <Input v-model="searchQuery" placeholder="Search cards…" class="min-w-56 flex-1" />
+      <CardSizeControl v-model="cardSize" :min="100" :max="240" :step="10" class="hidden sm:flex" />
+      <Button variant="outline" size="sm" @click="selectAll">Select all</Button>
+      <Button variant="outline" size="sm" @click="selectNone">Select none</Button>
+    </div>
 
-    <div v-if="loading" class="py-8 text-center text-ink-soft">Loading cards…</div>
-    <div v-else-if="error" class="py-8 text-center text-skipped">{{ error }}</div>
-    <div v-else class="min-h-0 flex-1 overflow-y-auto">
-      <div class="grid gap-2" style="grid-template-columns: repeat(auto-fill, minmax(100px, 1fr))">
+    <div class="min-h-0 flex-1 overflow-y-auto">
+      <div v-if="loading" class="flex h-full items-center justify-center">
+        <LoadingSpinner label="Loading cards…" />
+      </div>
+      <div v-else-if="error" class="flex h-full items-center justify-center px-4 text-center text-skipped">{{ error }}</div>
+      <div v-else class="grid gap-3" :style="{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))` }">
         <button
           v-for="card in filteredCards"
           :key="card.id"
           type="button"
-          class="relative overflow-hidden rounded-md border-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+          class="relative overflow-hidden rounded-md border-2 outline-none transition-[transform,box-shadow,border-color] duration-150 ease-out hover:z-10 hover:scale-[1.03] hover:shadow-(--shadow-2) focus-visible:ring-2 focus-visible:ring-ring"
           :class="selectedIds.has(card.id) ? 'border-brand' : 'border-transparent hover:border-line-strong'"
           @click="toggleCard(card.id)"
         >
@@ -103,7 +115,7 @@ function confirm() {
     </div>
 
     <div class="flex justify-end gap-2 border-t border-line pt-3">
-      <Button variant="ghost" @click="$emit('cancel')">Cancel</Button>
+      <Button variant="ghost" @click="$emit('cancel')">{{ props.cancelLabel }}</Button>
       <Button :disabled="selectedIds.size === 0" @click="confirm">Add {{ selectedIds.size }} cards</Button>
     </div>
   </div>

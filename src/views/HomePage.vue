@@ -11,7 +11,9 @@ import { Input } from '@/components/ui/input'
 import { SegmentedControl } from '@/components/ui/segmented'
 import ManaChip from '@/components/common/ManaChip.vue'
 import CardTile from '@/components/common/CardTile.vue'
+import CardSizeControl from '@/components/common/CardSizeControl.vue'
 import type { Mana } from '@/components/common/types'
+import { useCardSize } from '@/composables/useCardSize'
 import { useElementSize } from '@vueuse/core'
 import { useWindowVirtualizer } from '@tanstack/vue-virtual'
 import { Database, TriangleAlert, Sparkles, ArrowRight, Search, ArrowUp } from 'lucide-vue-next'
@@ -427,8 +429,10 @@ const filteredCards = computed(() => {
 const listRef = ref<HTMLElement | null>(null)
 const { width: gridWidth } = useElementSize(listRef)
 
-const TILE_MIN = 180
 const GRID_GAP = 16
+
+// User-adjustable card size (tile min-width, px); columns auto-fit the width.
+const cardSize = useCardSize('spellbinder-cardsize-search', 180)
 
 // Distance from the top of the document to the start of the list (scrollMargin).
 const listOffset = ref(0)
@@ -438,13 +442,11 @@ function updateListOffset() {
     : 0
 }
 
-// How many columns the result grid uses (defaults to 4; null = auto-fit by width).
-const colsOverride = ref<number | null>(4)
+// How many columns the result grid uses, derived from the chosen card size.
 const columnCount = computed(() => {
-  if (colsOverride.value) return colsOverride.value
   const w = gridWidth.value
   if (!w) return 1
-  return Math.max(1, Math.floor((w + GRID_GAP) / (TILE_MIN + GRID_GAP)))
+  return Math.max(1, Math.floor((w + GRID_GAP) / (cardSize.value + GRID_GAP)))
 })
 
 function scrollToTop() {
@@ -475,7 +477,7 @@ const resultRows = computed(() => {
 
 const estimatedRowHeight = computed(() => {
   const cols = columnCount.value
-  const w = gridWidth.value || TILE_MIN * cols
+  const w = gridWidth.value || cardSize.value * cols
   const colWidth = (w - (cols - 1) * GRID_GAP) / cols
   return colWidth * (88 / 63) + 96 + GRID_GAP // image + body + row gap
 })
@@ -689,7 +691,7 @@ onMounted(async () => {
             <div class="grid gap-5 sm:grid-cols-2">
               <div class="flex flex-col gap-2">
                 <label for="adv-name" class="text-sm font-medium text-ink-soft">Card name</label>
-                <Input id="adv-name" v-model="draftNameQuery" placeholder="Enter card name…" />
+                <Input id="adv-name" v-model="draftNameQuery" placeholder="Enter card name…" @keyup.enter="applyAdvancedFilters" />
               </div>
               <div class="flex flex-col gap-2">
                 <label class="text-sm font-medium text-ink-soft">Card type</label>
@@ -791,19 +793,8 @@ onMounted(async () => {
             <span class="text-ink-soft"> {{ filteredCards.length === 1 ? 'card' : 'cards' }}</span>
             <span v-if="searchSummary" class="text-ink-faint"> · {{ searchSummary }}</span>
           </p>
-          <div class="flex shrink-0 items-center gap-2">
-            <div class="hidden items-center gap-1 sm:flex">
-              <span class="mr-0.5 text-xs text-ink-faint">Columns</span>
-              <button
-                v-for="n in [3, 4, 5]"
-                :key="n"
-                type="button"
-                :aria-pressed="colsOverride === n"
-                class="grid h-7 w-7 place-items-center rounded-md border text-xs font-semibold tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
-                :class="colsOverride === n ? 'border-brand text-brand' : 'border-line text-ink-soft hover:text-foreground'"
-                @click="colsOverride = colsOverride === n ? null : n"
-              >{{ n }}</button>
-            </div>
+          <div class="flex shrink-0 items-center gap-3">
+            <CardSizeControl v-model="cardSize" :min="140" :max="260" :step="10" class="hidden sm:flex" />
             <Button variant="outline" size="sm" @click="scrollToTop"><ArrowUp :size="15" /> Top</Button>
           </div>
         </div>

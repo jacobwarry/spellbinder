@@ -38,9 +38,16 @@ watch(open, (isOpen) => {
   if (!isOpen) emit('cancel')
 })
 
+// A segment's cards can only be placed into storage, so picking a set requires
+// adding storage too.
+const segmentNeedsStorage = computed(() =>
+  shouldAddSegment.value && !!selectedSet.value && !shouldCreateBinder.value
+)
+
 const isValid = computed(() => {
   if (!setName.value.trim()) return false
   if (shouldCreateBinder.value && !binderName.value.trim()) return false
+  if (segmentNeedsStorage.value) return false
   return true
 })
 
@@ -208,6 +215,10 @@ async function handleSubmit() {
           </div>
 
           <p v-else class="py-2 text-center text-sm text-ink-soft">No sets found</p>
+
+          <p v-if="segmentNeedsStorage" class="text-xs text-skipped">
+            Enable "Add storage" above. A set needs a binder or box to place its cards.
+          </p>
         </div>
       </div>
     </div>

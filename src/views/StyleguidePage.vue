@@ -19,6 +19,8 @@ import OwnershipBadge from '@/components/common/OwnershipBadge.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import ColorIdentityBar from '@/components/common/ColorIdentityBar.vue'
 import CardTile from '@/components/common/CardTile.vue'
+import CardSizeControl from '@/components/common/CardSizeControl.vue'
+import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { useTheme } from '@/composables/useTheme'
 import { Sun, Moon, Check, Search, Library, Layers } from 'lucide-vue-next'
 
@@ -29,6 +31,7 @@ const inks = ['ink', 'ink-soft', 'ink-faint'] as const
 const manaKeys = ['W', 'U', 'B', 'R', 'G', 'C'] as const
 
 const searchDemo = ref('')
+const cardSizeDemo = ref(160)
 const dialogOpen = ref(false)
 const actionSheetOpen = ref(false)
 const demoSpacer = ref(1)
@@ -124,6 +127,22 @@ const sampleCards = [
         </div>
       </section>
 
+      <!-- card-size control -->
+      <section class="flex flex-col gap-4">
+        <h2 class="font-display text-xl font-bold">Card size control <span class="text-ink-faint text-sm font-normal">— drag to resize grid cards</span></h2>
+        <div class="flex flex-wrap items-center gap-6">
+          <CardSizeControl v-model="cardSizeDemo" :min="110" :max="240" :step="10" />
+          <span class="text-sm tabular-nums text-ink-soft">{{ cardSizeDemo }}px</span>
+        </div>
+        <div class="grid gap-3 rounded-xl border border-line bg-surface p-4" :style="{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSizeDemo}px, 1fr))` }">
+          <div
+            v-for="i in 6"
+            :key="i"
+            class="aspect-63/88 rounded-[6px] border border-line bg-surface-2"
+          ></div>
+        </div>
+      </section>
+
       <!-- mana chips (filters) -->
       <section class="flex flex-col gap-4">
         <h2 class="font-display text-xl font-bold">Mana chips (filters)</h2>
@@ -187,6 +206,16 @@ const sampleCards = [
             :status="card.status"
             :location="(card as { location?: string }).location"
           />
+        </div>
+      </section>
+
+      <!-- loading spinner -->
+      <section class="flex flex-col gap-4">
+        <h2 class="font-display text-xl font-bold">Loading spinner <span class="text-ink-faint text-sm font-normal">— planeswalker mark, winds up each rotation</span></h2>
+        <div class="flex flex-wrap items-center gap-10 rounded-xl border border-line bg-surface p-6">
+          <LoadingSpinner :size="32" label="Small" />
+          <LoadingSpinner label="Loading cards…" />
+          <LoadingSpinner :size="72" label="Large" />
         </div>
       </section>
 

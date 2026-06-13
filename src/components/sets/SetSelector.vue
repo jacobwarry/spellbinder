@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import type { ScryfallSet } from '@/types'
 import { fetchSets } from '@/api/scryfall'
 import { Input } from '@/components/ui/input'
+import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 
 const emit = defineEmits<{
   select: [set: ScryfallSet]
@@ -46,7 +47,7 @@ onMounted(async () => {
   <div class="flex flex-col gap-2">
     <Input v-model="searchQuery" placeholder="Search sets…" />
 
-    <div v-if="loading" class="py-4 text-center text-ink-soft">Loading sets…</div>
+    <div v-if="loading" class="flex justify-center py-10"><LoadingSpinner label="Loading sets…" /></div>
     <div v-else-if="error" class="py-4 text-center text-skipped">{{ error }}</div>
     <div v-else class="flex max-h-100 flex-col gap-1 overflow-y-auto">
       <button

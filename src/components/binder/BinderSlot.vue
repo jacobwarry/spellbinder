@@ -48,13 +48,16 @@ const MULTI_ART = 'radial-gradient(circle at 50% 28%,#ecce7e,#9c7b25)'
 <template>
   <button
     v-if="card"
-    class="group block cursor-pointer rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    class="group @container relative block cursor-pointer rounded-[5cqw] outline-none hover:z-10 focus-visible:ring-2 focus-visible:ring-ring"
     :aria-label="`${card.name}, ${card.set} ${card.number}, ${card.status}. Slot ${slotNumber}. Click for actions, double-click to toggle owned.`"
     @click="onCardClick"
   >
-    <!-- The card = image + an attached label band, one rounded unit. -->
-    <div class="overflow-hidden rounded-[4px] transition-transform group-active:scale-[.97]">
-      <div class="relative aspect-63/88 bg-surface-2">
+    <!-- The card = image + an attached label band, one rounded unit. The art is
+         clipped to the card's natural corner radius (≈5% of width, via cqw) so the
+         source image's white corner fill never peeks out; the dark art backdrop
+         matches the band so the rounded bottom blends seamlessly into it. -->
+    <div class="overflow-hidden rounded-[5cqw] shadow-none transition-[transform,box-shadow] duration-150 ease-out group-hover:scale-[1.03] group-hover:shadow-(--shadow-2) group-active:scale-[.97]">
+      <div class="relative aspect-63/88 overflow-hidden rounded-[5cqw]" style="background:#100c18">
         <!-- missing → faded + desaturated; skipped → desaturated/darkened (corner ✕ distinguishes it) -->
         <div
           class="absolute inset-0"

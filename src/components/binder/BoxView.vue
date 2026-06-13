@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
  * Storage-box view: boxes are unlimited and linear (no pages), so we render
- * their cards as a single virtualized grid of slots, reusing BinderSlot and the
- * same tap → action sheet flow as the binder. Part of the same visual system,
- * minus the page/spread chrome.
+ * their cards as a single virtualized grid of BinderSlot tiles — the exact same
+ * slot the binder uses (card art + set·№ band), so the experience is unified and
+ * the printed card name is read straight off the art, just like the binder. The
+ * card images are sized up to a readable scale rather than stretched edge-to-edge.
  */
 import { ref, computed } from 'vue'
 import { useElementSize } from '@vueuse/core'
@@ -18,22 +19,36 @@ interface BoxItem {
   placement: CardPlacement
 }
 
-const props = defineProps<{ items: BoxItem[] }>()
+const props = withDefaults(defineProps<{
+  items: BoxItem[]
+  /** Card size as a tile min-width (px); columns auto-fit, cards fill the row. */
+  tileSize?: number
+}>(), {
+  tileSize: 170
+})
 const emit = defineEmits<{
   select: [placement: CardPlacement]
   toggleOwned: [placement: CardPlacement]
 }>()
 
-const TILE_MIN = 150
-const GAP = 12
+const GAP = 14
 
 const scrollEl = ref<HTMLElement | null>(null)
 const { width } = useElementSize(scrollEl)
 
+// Columns auto-fit the chosen card size; cards then fill the row evenly (the same
+// min-width model the Decks/Search grids use).
 const columnCount = computed(() => {
   const w = width.value
   if (!w) return 1
-  return Math.max(1, Math.floor((w + GAP) / (TILE_MIN + GAP)))
+  return Math.max(1, Math.floor((w + GAP) / (props.tileSize + GAP)))
+})
+
+const colWidth = computed(() => {
+  const w = width.value
+  const cols = columnCount.value
+  if (!w) return props.tileSize
+  return (w - (cols - 1) * GAP) / cols
 })
 
 const rows = computed(() => {
@@ -43,12 +58,7 @@ const rows = computed(() => {
   return out
 })
 
-const estimatedRowHeight = computed(() => {
-  const cols = columnCount.value
-  const w = width.value || TILE_MIN * cols
-  const colWidth = (w - (cols - 1) * GAP) / cols
-  return colWidth * SLOT_ASPECT + GAP
-})
+const estimatedRowHeight = computed(() => colWidth.value * SLOT_ASPECT + GAP)
 
 const rowVirtualizer = useVirtualizer(
   computed(() => ({
@@ -66,7 +76,7 @@ function measureRow(el: unknown) {
 </script>
 
 <template>
-  <div ref="scrollEl" class="h-full overflow-y-auto p-4">
+  <div ref="scrollEl" class="box-scroll h-full overflow-y-auto p-4">
     <div :style="{ height: rowVirtualizer.getTotalSize() + 'px', position: 'relative', width: '100%' }">
       <div
         v-for="vRow in rowVirtualizer.getVirtualItems()"
@@ -89,3 +99,28 @@ function measureRow(el: unknown) {
     </div>
   </div>
 </template>
+
+<style scoped>
+/*
+ * The box is a primary scrolling surface, but the global thin scrollbar's
+ * --line-strong thumb is nearly invisible against the box's bg-surface in dark
+ * mode. Give it a higher-contrast thumb and reserve a stable gutter so the
+ * scroll affordance is unmistakable and the grid doesn't shift when it appears.
+ */
+.box-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--ink-faint) transparent;
+}
+.box-scroll::-webkit-scrollbar {
+  width: 12px;
+}
+.box-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--ink-faint);
+  border-radius: 100px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+.box-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-soft);
+}
+</style>

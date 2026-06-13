@@ -42,6 +42,8 @@ const emit = defineEmits<{
   insert: [pageNumber: number, slotIndex: number]
   quickOwn: [pageNumber: number, slotIndex: number]
   pageChange: [page: number]
+  /** The page number(s) currently visible (1 or 2 for a spread). */
+  viewChange: [pages: number[]]
   /** Turned past the first (-1) or last (+1) view — host may switch binders. */
   edge: [direction: -1 | 1]
   /** Toggle owned for every card on the currently visible page(s). */
@@ -64,6 +66,7 @@ const {
 onMounted(() => goToPage(props.initialPage))
 watch(() => props.initialPage, (p) => goToPage(p))
 watch(currentPage, (p) => emit('pageChange', p))
+watch(currentView, (v) => emit('viewChange', v), { immediate: true })
 
 // ---- page geometry (px) ----
 const pageHeight = computed(

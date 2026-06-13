@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { BinderPlan } from '@/types'
+import { useSegmentsStore } from './segments'
 
 const STORAGE_KEY = 'spellbinder-plans'
 
@@ -55,11 +56,27 @@ export const usePlansStore = defineStore('plans', () => {
     }
   }
 
+  // Segments aren't shared between plans, but guard anyway: only delete a segment
+  // once no remaining plan references it, so we never orphan it (the bug) or yank
+  // a still-used one. removeSegment cascades to clear its ownership data.
+  function deleteSegmentIfUnreferenced(segmentId: string): void {
+    const stillReferenced = plans.value.some(p => p.segmentIds.includes(segmentId))
+    if (!stillReferenced) {
+      useSegmentsStore().removeSegment(segmentId)
+    }
+  }
+
   function removePlan(id: string): void {
     const index = plans.value.findIndex(p => p.id === id)
     if (index !== -1) {
-      plans.value.splice(index, 1)
+      const [removed] = plans.value.splice(index, 1)
       saveToStorage(plans.value)
+      // Clean up segments that no remaining plan references.
+      if (removed) {
+        for (const segmentId of removed.segmentIds) {
+          deleteSegmentIfUnreferenced(segmentId)
+        }
+      }
     }
   }
 
@@ -113,6 +130,9 @@ export const usePlansStore = defineStore('plans', () => {
       if (index !== -1) {
         plan.segmentIds.splice(index, 1)
         saveToStorage(plans.value)
+        // Unlinking from the plan is the user's "remove this set" action, so the
+        // segment itself should go too (along with its ownership keys).
+        deleteSegmentIfUnreferenced(segmentId)
       }
     }
   }
