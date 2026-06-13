@@ -20,7 +20,7 @@ Reference: `src/views/DecksView.vue`; import via `src/api/archidekt.ts`.
 - Triggered from list header or empty state → **Dialog**.
 - Single input accepting **a full Archidekt URL or a raw numeric ID** (`extractDeckId`). `inputmode` text; visible label + helper ("Paste an Archidekt deck URL or ID").
 - States: idle → **submit shows loading** (disable button + spinner) → success (close + deck appears, brief success feedback) or **error with clear recovery** ("Couldn't reach Archidekt — check the link and retry", retry affordance). Errors stated as cause + fix (MASTER error-clarity).
-- Implementation note: import goes through the `corsproxy.io` proxy; surface a graceful failure if the proxy/Archidekt is unreachable (network-fallback).
+- Implementation note: import goes through a same-origin proxy (`/api/archidekt/*` → Archidekt, via the Vite dev proxy and a Netlify redirect); surface a graceful failure if Archidekt is unreachable (network-fallback).
 
 ## 4. Deck detail + card-linking flow
 

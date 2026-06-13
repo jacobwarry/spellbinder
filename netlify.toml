@@ -2,6 +2,13 @@
   publish = "dist"
   command = "npm run build"
 
+# Proxy Archidekt API server-side to avoid browser CORS (must come BEFORE the SPA catch-all)
+[[redirects]]
+  from = "/api/archidekt/*"
+  to = "https://archidekt.com/api/:splat"
+  status = 200
+  force = true
+
 # Redirect all requests to index.html for Vue Router
 [[redirects]]
   from = "/*"

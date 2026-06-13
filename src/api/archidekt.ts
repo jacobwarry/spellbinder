@@ -1,6 +1,7 @@
-const ARCHIDEKT_API = 'https://archidekt.com/api'
-// CORS proxy to bypass browser restrictions (Archidekt doesn't allow cross-origin requests)
-const CORS_PROXY = 'https://corsproxy.io/?'
+// Archidekt's API sends no CORS headers, so we never call it directly from the browser.
+// Requests go through a same-origin proxy: the Vite dev proxy in dev, a Netlify redirect in prod.
+// Both map /api/archidekt/* -> https://archidekt.com/api/* server-side, sidestepping CORS.
+const ARCHIDEKT_API = '/api/archidekt'
 
 export interface ArchidektCard {
   card: {
@@ -37,13 +38,10 @@ export function extractDeckId(input: string): string | null {
 }
 
 /**
- * Fetch deck data from Archidekt API (via CORS proxy)
+ * Fetch deck data from Archidekt API (via the same-origin proxy)
  */
 export async function fetchArchidektDeck(deckId: string): Promise<ArchidektDeckResponse> {
-  const archidektUrl = `${ARCHIDEKT_API}/decks/${deckId}/`
-  const proxyUrl = `${CORS_PROXY}${encodeURIComponent(archidektUrl)}`
-
-  const response = await fetch(proxyUrl)
+  const response = await fetch(`${ARCHIDEKT_API}/decks/${deckId}/`)
 
   if (!response.ok) {
     if (response.status === 404) {

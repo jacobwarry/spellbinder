@@ -68,7 +68,7 @@ Run at startup in `src/main.ts` before `app.mount` (`migrateBindersToTyped` adds
 ## External APIs
 
 - **Scryfall** (`src/api/scryfall.ts`): cards/sets fetched and cached in IndexedDB; cache is read-through (`getCachedCards` fetches only missing IDs). Respects the 75-cards-per-request collection limit and adds 100ms throttling between paged/chunked requests. Card objects are explicitly field-mapped on ingest (not stored raw) — if you need a new Scryfall field, add it to the `ScryfallCard` type **and** to every mapping block in this file.
-- **Archidekt** (`src/api/archidekt.ts`): deck import goes through the `corsproxy.io` CORS proxy because Archidekt blocks cross-origin requests. `extractDeckId` accepts either a full URL or a raw numeric ID.
+- **Archidekt** (`src/api/archidekt.ts`): Archidekt's API sends no CORS headers, so it's never called directly from the browser. Requests use the same-origin path `/api/archidekt/*`, proxied server-side to `https://archidekt.com/api/*` by the Vite dev proxy (`vite.config.ts`) in dev and by a Netlify redirect (`netlify.toml`) in prod. Both must stay in sync. `extractDeckId` accepts either a full URL or a raw numeric ID.
 
 ## Stores & UI structure
 
