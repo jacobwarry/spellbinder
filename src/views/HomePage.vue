@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { useSegmentsStore, useCollectionStore, useBindersStore, usePlansStore } from '@/stores'
+import { useSegmentsStore, useCollectionStore, useBindersStore, usePlansStore, usePricesStore } from '@/stores'
 import { getCachedCards } from '@/api/scryfall'
+import { specialFinishLabel } from '@/utils/finish'
 import type { ScryfallCard } from '@/types'
 import { useAllPlacements, buildCardLocationMap } from '@/composables/useAllPlacements'
+import { useCollectionSearch } from '@/composables/useCollectionSearch'
 import MultiSelectDropdown from '@/components/MultiSelectDropdown.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +18,8 @@ import type { Mana } from '@/components/common/types'
 import { useCardSize } from '@/composables/useCardSize'
 import { useElementSize } from '@vueuse/core'
 import { useWindowVirtualizer } from '@tanstack/vue-virtual'
-import { Database, TriangleAlert, Sparkles, ArrowRight, Search, ArrowUp } from 'lucide-vue-next'
+import { Select } from '@/components/ui/select'
+import { Database, TriangleAlert, Sparkles, ArrowRight, Search, ArrowUp, ArrowDown, RotateCcw } from 'lucide-vue-next'
 
 const router = useRouter()
 
@@ -26,34 +29,41 @@ const segmentsStore = useSegmentsStore()
 const collectionStore = useCollectionStore()
 const bindersStore = useBindersStore()
 const plansStore = usePlansStore()
+const pricesStore = usePricesStore()
 
-const searchMode = ref<'quick' | 'advanced'>('quick')
-const searchQuery = ref('')
-const debouncedSearchQuery = ref('')
-const allCards = ref<Map<string, { card: ScryfallCard; segmentId: string; segmentName: string; cardIndex: number }>>(new Map())
-const isLoading = ref(false)
+// Search criteria + the built card index live in a module-scoped composable so they
+// survive leaving this view (open a card, hit Back) without being reset or rebuilt.
+const {
+  searchMode,
+  searchQuery,
+  debouncedSearchQuery,
+  draftNameQuery,
+  draftTypeFilter,
+  draftColorFilter,
+  draftCommanderIdentity,
+  draftRarityFilter,
+  draftOwnershipFilter,
+  draftCmcMin,
+  draftCmcMax,
+  advancedNameQuery,
+  advancedTypeFilter,
+  advancedColorFilter,
+  advancedCommanderIdentity,
+  advancedRarityFilter,
+  advancedOwnershipFilter,
+  advancedCmcMin,
+  advancedCmcMax,
+  advancedSearchTriggered,
+  sortField,
+  sortDir,
+  allCards,
+  indexSignature,
+  savedScroll
+} = useCollectionSearch()
+
+// Only show the initial loading state before the index has ever been built.
+const isLoading = ref(allCards.value.size === 0)
 let isFetching = false // Guard against concurrent fetches
-
-// Advanced search filters - draft values (what user is typing/selecting)
-const draftNameQuery = ref('')
-const draftTypeFilter = ref<string[]>([])
-const draftColorFilter = ref<string[]>([])
-const draftCommanderIdentity = ref(false)
-const draftRarityFilter = ref<string[]>([])
-const draftOwnershipFilter = ref<string[]>(['owned'])
-const draftCmcMin = ref<number | ''>('')
-const draftCmcMax = ref<number | ''>('')
-
-// Advanced search filters - active values (used for actual filtering)
-const advancedNameQuery = ref('')
-const advancedTypeFilter = ref<string[]>([])
-const advancedColorFilter = ref<string[]>([])
-const advancedCommanderIdentity = ref(false)
-const advancedRarityFilter = ref<string[]>([])
-const advancedOwnershipFilter = ref<string[]>(['owned'])
-const advancedCmcMin = ref<number | ''>('')
-const advancedCmcMax = ref<number | ''>('')
-const advancedSearchTriggered = ref(false)
 
 // Check if user has any sets
 const hasNoSets = computed(() => plansStore.plans.length === 0)
@@ -92,6 +102,19 @@ function applyAdvancedFilters() {
   advancedOwnershipFilter.value = [...draftOwnershipFilter.value]
   advancedCmcMin.value = draftCmcMin.value
   advancedCmcMax.value = draftCmcMax.value
+}
+
+// Reset every advanced filter back to its default and clear the applied results.
+function resetAdvancedFilters() {
+  draftNameQuery.value = ''
+  draftTypeFilter.value = []
+  draftColorFilter.value = []
+  draftCommanderIdentity.value = false
+  draftRarityFilter.value = []
+  draftOwnershipFilter.value = ['owned']
+  draftCmcMin.value = ''
+  draftCmcMax.value = ''
+  advancedSearchTriggered.value = false
 }
 
 const typeOptions = [
@@ -279,6 +302,90 @@ watch(searchQuery, (newQuery) => {
   }, 150)
 })
 
+// Sort controls (shown in the results bar). Applies to both quick and advanced results.
+const sortOptions = [
+  { value: 'set', label: 'Set' },
+  { value: 'name', label: 'Name' },
+  { value: 'cmc', label: 'Mana value' },
+  { value: 'power', label: 'Power' },
+  { value: 'toughness', label: 'Toughness' }
+] as const
+
+function toggleSortDir() {
+  sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+}
+
+// Power/toughness are printed as strings ("3", "*", "1+*", "X"). Parse a leading number;
+// anything non-numeric (or a non-creature with no P/T) yields null and sorts to the end.
+function parseStat(v?: string): number | null {
+  if (v == null || v === '') return null
+  const n = Number.parseFloat(v)
+  return Number.isNaN(n) ? null : n
+}
+
+// Numeric compare honoring the active direction, but always pushing null (no value) last.
+function compareNumeric(a: number | null, b: number | null): number {
+  if (a === null && b === null) return 0
+  if (a === null) return 1
+  if (b === null) return -1
+  return sortDir.value === 'asc' ? a - b : b - a
+}
+
+function compareText(a: string, b: string): number {
+  const c = a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+  return sortDir.value === 'asc' ? c : -c
+}
+
+type SearchResult = {
+  card: ScryfallCard
+  segmentId: string
+  segmentName: string
+  cardIndex: number
+  isOwned: boolean
+  isSkipped: boolean
+}
+
+// Stable tiebreaker (and the default order): set name, then collector number.
+function bySetThenNumber(a: SearchResult, b: SearchResult): number {
+  const setNameA = a.card.set_name || a.card.set || ''
+  const setNameB = b.card.set_name || b.card.set || ''
+  const setNameComparison = setNameA.localeCompare(setNameB)
+  if (setNameComparison !== 0) return setNameComparison
+  return a.card.collector_number.localeCompare(b.card.collector_number, undefined, { numeric: true })
+}
+
+function applySort(results: SearchResult[]): SearchResult[] {
+  return results.sort((a, b) => {
+    let primary = 0
+    switch (sortField.value) {
+      case 'name':
+        primary = compareText(a.card.name, b.card.name)
+        break
+      case 'cmc':
+        primary = compareNumeric(a.card.cmc ?? null, b.card.cmc ?? null)
+        break
+      case 'power':
+        primary = compareNumeric(parseStat(a.card.power), parseStat(b.card.power))
+        break
+      case 'toughness':
+        primary = compareNumeric(parseStat(a.card.toughness), parseStat(b.card.toughness))
+        break
+      case 'set':
+        primary = compareText(a.card.set_name || a.card.set || '', b.card.set_name || b.card.set || '')
+        break
+    }
+    if (primary !== 0) return primary
+    return bySetThenNumber(a, b)
+  })
+}
+
+// Art Series cards (layout "art_series", or the bare "Card" type_line on older cached
+// printings that predate storing layout) are collectible art, not playable cards — they
+// carry no real colour identity or gameplay value.
+function isArtCard(card: ScryfallCard): boolean {
+  return card.layout === 'art_series' || card.type_line === 'Card'
+}
+
 const filteredCards = computed(() => {
   if (searchMode.value === 'quick') {
     // Quick search: just name matching
@@ -308,17 +415,7 @@ const filteredCards = computed(() => {
       }
     }
 
-    // Sort by set name (alphabetically), then by collector number
-    return results.sort((a, b) => {
-      // First, sort by set name (fallback to set code if set_name is missing)
-      const setNameA = a.card.set_name || a.card.set || ''
-      const setNameB = b.card.set_name || b.card.set || ''
-      const setNameComparison = setNameA.localeCompare(setNameB)
-      if (setNameComparison !== 0) return setNameComparison
-
-      // Then, sort by collector number (using natural sort)
-      return a.card.collector_number.localeCompare(b.card.collector_number, undefined, { numeric: true })
-    })
+    return applySort(results)
   } else {
     // Advanced search: apply all filters
     // Don't return results until Search button is clicked
@@ -358,6 +455,12 @@ const filteredCards = computed(() => {
 
       // Filter by colors
       if (advancedColorFilter.value.length > 0) {
+        // Art cards have no playable value or colour identity, so exclude them once
+        // the user is filtering by colour (otherwise empty-identity art slips through,
+        // e.g. it's a subset of every commander identity).
+        if (isArtCard(data.card)) {
+          continue
+        }
         if (!data.card.color_identity) {
           // Skip cards without color_identity data (old cached cards)
           continue
@@ -409,17 +512,7 @@ const filteredCards = computed(() => {
       })
     }
 
-    // Sort by set name (alphabetically), then by collector number
-    return results.sort((a, b) => {
-      // First, sort by set name (fallback to set code if set_name is missing)
-      const setNameA = a.card.set_name || a.card.set || ''
-      const setNameB = b.card.set_name || b.card.set || ''
-      const setNameComparison = setNameA.localeCompare(setNameB)
-      if (setNameComparison !== 0) return setNameComparison
-
-      // Then, sort by collector number (using natural sort)
-      return a.card.collector_number.localeCompare(b.card.collector_number, undefined, { numeric: true })
-    })
+    return applySort(results)
   }
 })
 
@@ -492,8 +585,45 @@ const rowVirtualizer = useWindowVirtualizer(
   }))
 )
 
-// Keep scrollMargin accurate as the controls above the list change height.
-onMounted(updateListOffset)
+// Restore the document scroll from the last visit. Two things must be true before a
+// scrollTo lands correctly: the grid must have its real width (so the FINAL column
+// count — hence row count and total height — is settled, not the 1-column fallback used
+// before measurement), and, on a rebuild, the async index load must have finished so the
+// list is rendered at all. So: wait for a real gridWidth, then hold the target across a
+// short settle window while the virtualizer finishes measuring rows.
+const pendingScroll = savedScroll.value
+onMounted(() => {
+  updateListOffset()
+  if (pendingScroll <= 0) return
+  const target = pendingScroll
+
+  const holdScroll = () => {
+    // Re-apply every frame for a brief window so estimate→measured height adjustments
+    // can't leave us short, then release control back to the user.
+    const deadline = performance.now() + 500
+    const frame = () => {
+      window.scrollTo(0, target)
+      if (performance.now() < deadline) requestAnimationFrame(frame)
+    }
+    nextTick(() => requestAnimationFrame(frame))
+  }
+
+  if (gridWidth.value > 0) {
+    holdScroll()
+  } else {
+    const stop = watch(gridWidth, (w) => {
+      if (w > 0) {
+        stop()
+        holdScroll()
+      }
+    })
+  }
+})
+
+// Remember where the user was so Back returns them to the same spot.
+onBeforeUnmount(() => {
+  savedScroll.value = window.scrollY
+})
 watch(
   [gridWidth, () => searchMode.value, () => advancedSearchTriggered.value, () => filteredCards.value.length],
   () => nextTick(updateListOffset)
@@ -514,6 +644,31 @@ function rarityLabel(r: string): string {
 function locationLabel(segmentId: string, cardIndex: number): string | undefined {
   const loc = getCardLocation(segmentId, cardIndex)
   return loc ? `${loc.binderName} · P${loc.pageNumber} · S${loc.slotOnPage}` : undefined
+}
+
+// Special foil treatment label (Surge, Etched, …), or null for regular/non-foil printings.
+function finishLabelOf(card: ScryfallCard): string | null {
+  return specialFinishLabel(card.promo_types, card.finishes)
+}
+
+// Owned finishes for this position (a card can be owned in both) — drive the frame + muting.
+function ownsNonFoilOf(result: SearchResult): boolean {
+  return collectionStore.isOwnedNonFoil(`${result.segmentId}:${result.cardIndex}`)
+}
+function ownsFoilOf(result: SearchResult): boolean {
+  return collectionStore.isOwnedFoil(`${result.segmentId}:${result.cardIndex}`)
+}
+
+// Whether the tile gets the iridescent foil frame: the user owns the foil finish at this
+// position, or it's an inherently-foil printing (foil-only or a special treatment).
+function isFoilResult(result: SearchResult): boolean {
+  const foilOnly = !!result.card.finishes && !result.card.finishes.includes('nonfoil')
+  return ownsFoilOf(result) || foilOnly || finishLabelOf(result.card) !== null
+}
+
+// Latest fetched prices for the card (both finishes); undefined until prices are fetched.
+function cardPrice(result: SearchResult) {
+  return pricesStore.getPrice(result.card.id)
 }
 
 // Placements across all plans (shared composable) + an O(1) card-location lookup.
@@ -548,6 +703,12 @@ async function clearCardCache() {
   }
 }
 
+// Cheap fingerprint of the collection's shape; a change here means the search index
+// must be rebuilt. Captures adds/removes per segment (id + card count).
+function collectionSignature(): string {
+  return segmentsStore.segments.map((s) => `${s.id}:${s.cardIds.length}`).join('|')
+}
+
 onMounted(async () => {
   // Dev-only console helpers — dynamically imported so the debug module is
   // tree-shaken out of the production bundle.
@@ -564,6 +725,14 @@ onMounted(async () => {
       console.log('All placements (by plan):', allPlacements.value)
       console.log('Plans:', plansStore.plans)
     }
+  }
+
+  // Reuse the cached index when the collection is unchanged — makes returning to a
+  // prior search instant (no rebuild, no loading flash).
+  const signature = collectionSignature()
+  if (indexSignature.value === signature && allCards.value.size > 0) {
+    isLoading.value = false
+    return
   }
 
   // Prevent concurrent fetches
@@ -593,6 +762,7 @@ onMounted(async () => {
 
     // Fetch card data for all unique card IDs
     const uniqueCardIds = Array.from(cardIdToSegments.keys())
+    const next = new Map<string, { card: ScryfallCard; segmentId: string; segmentName: string; cardIndex: number }>()
 
     if (uniqueCardIds.length > 0) {
       const cardMap = await getCachedCards(uniqueCardIds)
@@ -604,11 +774,14 @@ onMounted(async () => {
           // Add each instance of the card (in different segments or positions)
           segments.forEach(({ segmentId, segmentName, cardIndex }) => {
             const key = `${segmentId}:${cardIndex}`
-            allCards.value.set(key, { card, segmentId, segmentName, cardIndex })
+            next.set(key, { card, segmentId, segmentName, cardIndex })
           })
         }
       }
     }
+
+    allCards.value = next
+    indexSignature.value = signature
   } catch (error) {
     // Error fetching cards
   } finally {
@@ -664,7 +837,7 @@ onMounted(async () => {
       </div>
 
       <!-- Search section (only shown when user has sets) -->
-      <div v-else class="mx-auto w-full max-w-300 px-6 sm:px-8">
+      <div v-else class="mx-auto w-full max-w-6xl px-6 sm:px-8">
         <div class="pt-6">
           <h2 class="font-display text-xl font-bold tracking-tight">Search your collection</h2>
           <p v-if="isLoading" class="mt-4 italic text-ink-soft">Loading cards…</p>
@@ -694,7 +867,17 @@ onMounted(async () => {
                 <Input id="adv-name" v-model="draftNameQuery" placeholder="Enter card name…" @keyup.enter="applyAdvancedFilters" />
               </div>
               <div class="flex flex-col gap-2">
-                <label class="text-sm font-medium text-ink-soft">Card type</label>
+                <div class="flex items-center justify-between">
+                  <label class="text-sm font-medium text-ink-soft">Card type</label>
+                  <button
+                    v-if="draftTypeFilter.length"
+                    type="button"
+                    class="text-xs font-medium text-ink-faint transition-colors hover:text-foreground"
+                    @click="draftTypeFilter = []"
+                  >
+                    Clear
+                  </button>
+                </div>
                 <MultiSelectDropdown
                   v-model="draftTypeFilter"
                   :groups="typeOptions"
@@ -773,7 +956,10 @@ onMounted(async () => {
               </div>
             </div>
 
-            <div class="flex justify-end border-t border-line pt-4">
+            <div class="flex justify-end gap-2 border-t border-line pt-4">
+              <Button variant="ghost" @click="resetAdvancedFilters">
+                <RotateCcw :size="16" /> Reset
+              </Button>
               <Button class="min-w-30" @click="applyAdvancedFilters">
                 <Search :size="18" /> Search
               </Button>
@@ -794,6 +980,25 @@ onMounted(async () => {
             <span v-if="searchSummary" class="text-ink-faint"> · {{ searchSummary }}</span>
           </p>
           <div class="flex shrink-0 items-center gap-3">
+            <div class="flex items-center gap-1.5">
+              <label for="sort-field" class="hidden text-[13px] text-ink-soft sm:inline">Sort</label>
+              <div class="w-32">
+                <Select id="sort-field" v-model="sortField" class="h-9 pr-9 text-[13px]">
+                  <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </Select>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                class="px-2.5"
+                :title="sortDir === 'asc' ? 'Ascending' : 'Descending'"
+                :aria-label="sortDir === 'asc' ? 'Sort ascending' : 'Sort descending'"
+                @click="toggleSortDir"
+              >
+                <ArrowUp v-if="sortDir === 'asc'" :size="15" />
+                <ArrowDown v-else :size="15" />
+              </Button>
+            </div>
             <CardSizeControl v-model="cardSize" :min="140" :max="260" :step="10" class="hidden sm:flex" />
             <Button variant="outline" size="sm" @click="scrollToTop"><ArrowUp :size="15" /> Top</Button>
           </div>
@@ -825,18 +1030,30 @@ onMounted(async () => {
               :style="{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vRow.start - listOffset}px)` }"
             >
               <div class="grid gap-4" :style="{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }">
-                <CardTile
+                <RouterLink
                   v-for="result in resultRows[vRow.index]"
                   :key="`${result.segmentId}:${result.cardIndex}`"
-                  :name="result.card.name"
-                  :set="result.card.set.toUpperCase()"
-                  :number="result.card.collector_number"
-                  :color="colorOf(result.card)"
-                  :rarity="rarityLabel(result.card.rarity)"
-                  :status="result.isOwned ? 'owned' : result.isSkipped ? 'skipped' : 'missing'"
-                  :image="result.card.image_uris?.normal || result.card.card_faces?.[0]?.image_uris?.normal"
-                  :location="locationLabel(result.segmentId, result.cardIndex)"
-                />
+                  :to="`/card/${result.card.id}`"
+                  class="block rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  :title="`View ${result.card.name}`"
+                >
+                  <CardTile
+                    :name="result.card.name"
+                    :set="result.card.set.toUpperCase()"
+                    :number="result.card.collector_number"
+                    :color="colorOf(result.card)"
+                    :rarity="rarityLabel(result.card.rarity)"
+                    :status="result.isOwned ? 'owned' : result.isSkipped ? 'skipped' : 'missing'"
+                    :image="result.card.image_uris?.normal || result.card.card_faces?.[0]?.image_uris?.normal"
+                    :location="locationLabel(result.segmentId, result.cardIndex)"
+                    :eur="cardPrice(result)?.eur"
+                    :eur-foil="cardPrice(result)?.eurFoil"
+                    :owns-non-foil="ownsNonFoilOf(result)"
+                    :owns-foil="ownsFoilOf(result)"
+                    :foil="isFoilResult(result)"
+                    :finish-label="finishLabelOf(result.card)"
+                  />
+                </RouterLink>
               </div>
             </div>
           </div>
