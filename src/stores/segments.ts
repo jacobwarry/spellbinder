@@ -23,14 +23,20 @@ function loadFromStorage(): Segment[] {
     } else if (seg.spacersBefore && typeof seg.spacersBefore === 'object') {
       spacersBefore = seg.spacersBefore as Record<number, number>
     }
+    const backFaces = (seg.backFaces && typeof seg.backFaces === 'object'
+      ? seg.backFaces
+      : {}) as Record<number, number>
     return {
       id: seg.id as string,
       name: seg.name as string,
       scryfallSetCode: seg.scryfallSetCode as string,
       cardIds: seg.cardIds as string[],
       offset: (seg.offset as number) ?? 0,
+      pageOffset: (seg.pageOffset as number) ?? 0,
       targetBinderId: seg.targetBinderId as string | undefined,
-      spacersBefore
+      spacersBefore,
+      backFaces,
+      isCustom: seg.isCustom as boolean | undefined
     }
   })
 }
@@ -65,8 +71,52 @@ export const useSegmentsStore = defineStore('segments', () => {
       scryfallSetCode,
       cardIds,
       offset,
+      pageOffset: 0,
       targetBinderId,
-      spacersBefore: {}
+      spacersBefore: {},
+      backFaces: {}
+    }
+    segments.value.push(segment)
+    saveToStorage(segments.value)
+    return segment
+  }
+
+  // A pre-filled custom segment, used by CSV import (e.g. a ManaBox export). Like a
+  // custom section it spans many sets, so scryfallSetCode is '' and isCustom is true,
+  // but it lands with its cards already in place rather than empty.
+  function addImportedSegment(name: string, cardIds: string[]): Segment {
+    const segment: Segment = {
+      id: generateId(),
+      name,
+      scryfallSetCode: '',
+      cardIds,
+      offset: 0,
+      pageOffset: 0,
+      targetBinderId: undefined,
+      spacersBefore: {},
+      backFaces: {},
+      isCustom: true
+    }
+    segments.value.push(segment)
+    saveToStorage(segments.value)
+    return segment
+  }
+
+  // A custom section is a set-less segment you fill with hand-picked cards from any
+  // set (promos, trailing extras). scryfallSetCode is '' so the insert search isn't
+  // filtered to a single set.
+  function addCustomSegment(name: string): Segment {
+    const segment: Segment = {
+      id: generateId(),
+      name,
+      scryfallSetCode: '',
+      cardIds: [],
+      offset: 0,
+      pageOffset: 0,
+      targetBinderId: undefined,
+      spacersBefore: {},
+      backFaces: {},
+      isCustom: true
     }
     segments.value.push(segment)
     saveToStorage(segments.value)
@@ -124,6 +174,15 @@ export const useSegmentsStore = defineStore('segments', () => {
     }
     segment.spacersBefore = newSpacers
 
+    // Shift backFaces in lockstep: drop the removed index, shift the rest down.
+    const newBackFaces: Record<number, number> = {}
+    for (const [indexStr, face] of Object.entries(segment.backFaces ?? {})) {
+      const idx = parseInt(indexStr, 10)
+      if (idx < cardIndex) newBackFaces[idx] = face
+      else if (idx > cardIndex) newBackFaces[idx - 1] = face
+    }
+    segment.backFaces = newBackFaces
+
     // Shift ownership/skipped indices in collection store
     const collectionStore = useCollectionStore()
     collectionStore.shiftIndicesForRemove(segmentId, cardIndex)
@@ -171,6 +230,14 @@ export const useSegmentsStore = defineStore('segments', () => {
         }
 
         segment.spacersBefore = newSpacers
+
+        // Shift backFaces up for cards at or after the insertion point.
+        const newBackFaces: Record<number, number> = {}
+        for (const [indexStr, face] of Object.entries(segment.backFaces ?? {})) {
+          const idx = parseInt(indexStr, 10)
+          newBackFaces[idx < index ? idx : idx + 1] = face
+        }
+        segment.backFaces = newBackFaces
       } else {
         // Fallback: add to end
         segment.cardIds.push(cardId)
@@ -179,6 +246,41 @@ export const useSegmentsStore = defineStore('segments', () => {
       // Add to end of segment
       segment.cardIds.push(cardId)
     }
+    saveToStorage(segments.value)
+  }
+
+  // Add the back face of a double-faced card as its own slot immediately after the
+  // front (a second physical copy). It reuses the same Scryfall id in cardIds and is
+  // flagged in backFaces so the viewer renders the backside; ownership is independent.
+  function insertBackFaceAfter(segmentId: string, cardIndex: number): void {
+    const segment = segmentMap.value.get(segmentId)
+    if (!segment || cardIndex < 0 || cardIndex >= segment.cardIds.length) return
+    const cardId = segment.cardIds[cardIndex]!
+    const insertIndex = cardIndex + 1
+
+    // Shift position-keyed ownership up before the splice (mirrors insertCardInSegment).
+    const collectionStore = useCollectionStore()
+    collectionStore.shiftIndicesForInsert(segmentId, insertIndex)
+
+    segment.cardIds.splice(insertIndex, 0, cardId)
+
+    // Shift spacersBefore up for indices at/after the insertion point.
+    const newSpacers: Record<number, number> = {}
+    for (const [indexStr, count] of Object.entries(segment.spacersBefore)) {
+      const idx = parseInt(indexStr, 10)
+      newSpacers[idx < insertIndex ? idx : idx + 1] = count
+    }
+    segment.spacersBefore = newSpacers
+
+    // Shift backFaces up likewise, then flag the new slot as the back face.
+    const newBackFaces: Record<number, number> = {}
+    for (const [indexStr, face] of Object.entries(segment.backFaces ?? {})) {
+      const idx = parseInt(indexStr, 10)
+      newBackFaces[idx < insertIndex ? idx : idx + 1] = face
+    }
+    newBackFaces[insertIndex] = 1
+    segment.backFaces = newBackFaces
+
     saveToStorage(segments.value)
   }
 
@@ -242,11 +344,14 @@ export const useSegmentsStore = defineStore('segments', () => {
     getSegment,
     getSegmentCardCount,
     addSegment,
+    addImportedSegment,
+    addCustomSegment,
     updateSegment,
     removeSegment,
     removeCardFromSegment,
     removeCardAtIndex,
     insertCardInSegment,
+    insertBackFaceAfter,
     addSpacerBefore,
     removeSpacerBefore,
     getSpacerCount,

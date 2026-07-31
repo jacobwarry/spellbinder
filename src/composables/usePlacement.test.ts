@@ -52,6 +52,53 @@ describe('calculatePlacements', () => {
     expect(placements.map((p) => p.slotOnPage)).toEqual([3, 4]) // first two slots left blank
   })
 
+  it('applies a page offset as whole leading pages (pageOffset * slotsPerPage)', async () => {
+    const { placements } = await calculatePlacements(
+      [seg('s', 2, { pageOffset: 1 })],
+      [binder('b1', 2, 4)]
+    )
+    // 1 page of 4 slots skipped -> cards land on page 2
+    expect(placements.map((p) => ({ pageNumber: p.pageNumber, slotOnPage: p.slotOnPage })))
+      .toEqual([{ pageNumber: 2, slotOnPage: 1 }, { pageNumber: 2, slotOnPage: 2 }])
+  })
+
+  it('stacks page offset on top of the raw slot offset', async () => {
+    const { placements } = await calculatePlacements(
+      [seg('s', 1, { pageOffset: 1, offset: 2 })],
+      [binder('b1', 2, 4)]
+    )
+    // 4 (one page) + 2 slots skipped -> slot index 6 -> page 2, slot 3
+    expect(placements[0]).toMatchObject({ pageNumber: 2, slotOnPage: 3 })
+  })
+
+  it('pulls a segment back with a negative offset, floored at slot 0', async () => {
+    const { placements } = await calculatePlacements(
+      [seg('s', 2, { offset: -3 })],
+      [binder('b1', 1, 9)]
+    )
+    // negative offset on an empty binder can't precede slot 0
+    expect(placements.map((p) => p.slotOnPage)).toEqual([1, 2])
+  })
+
+  it('lets a negative offset cancel part of a page offset', async () => {
+    const { placements } = await calculatePlacements(
+      [seg('s', 1, { pageOffset: 1, offset: -1 })],
+      [binder('b1', 2, 4)]
+    )
+    // 4 (one page) - 1 -> slot index 3 -> page 1, slot 4
+    expect(placements[0]).toMatchObject({ pageNumber: 1, slotOnPage: 4 })
+  })
+
+  it('pulls a segment back into a partially filled auto-fill binder', async () => {
+    const { placements } = await calculatePlacements(
+      [seg('a', 5), seg('b', 1, { offset: -2 })],
+      [binder('b1', 2, 9)]
+    )
+    // segment a leaves the cursor at slot index 5; offset -2 -> slot index 3 -> slot 4
+    const placed = placements.find((p) => p.segmentId === 'b')!
+    expect(placed).toMatchObject({ pageNumber: 1, slotOnPage: 4 })
+  })
+
   it('inserts spacersBefore a specific card index', async () => {
     const { placements } = await calculatePlacements(
       [seg('s', 3, { spacersBefore: { 1: 2 } })],

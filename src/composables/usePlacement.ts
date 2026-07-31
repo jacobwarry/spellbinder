@@ -48,7 +48,7 @@ export async function calculatePlacements(
   }
 
   // Helper to place a card in a binder at a specific slot
-  function placeCard(card: NonNullable<ReturnType<typeof cardMap.get>>, segmentId: string, cardIndexInSegment: number, binder: Binder, binderIndex: number, slot: number) {
+  function placeCard(card: NonNullable<ReturnType<typeof cardMap.get>>, segmentId: string, cardIndexInSegment: number, binder: Binder, binderIndex: number, slot: number, face: number) {
     let pageNumber: number
     let slotOnPage: number
 
@@ -69,7 +69,8 @@ export async function calculatePlacements(
       binderId: binder.id,
       binderIndex,
       pageNumber,
-      slotOnPage
+      slotOnPage,
+      face
     })
 
     binderNextSlot.set(binder.id, slot + 1)
@@ -89,17 +90,26 @@ export async function calculatePlacements(
       }
     }
 
-    // Apply segment offset to target binder or find auto-fill binder
-    if (segment.offset > 0) {
+    // Apply segment offset to target binder or find auto-fill binder. A page
+    // offset resolves against the receiving binder's slotsPerPage (0 for boxes,
+    // which have no page concept) and stacks on top of the raw slot offset.
+    // `offset` may be negative (pulling the segment back by up to one page), so
+    // the resulting slot is floored at 0 — it can never precede the binder start.
+    const offsetFor = (binder: Binder): number => {
+      const slotsPerPage = binder.type === 'binder' ? binder.slotsPerPage : 0
+      return segment.offset + (segment.pageOffset ?? 0) * slotsPerPage
+    }
+
+    if (segment.offset !== 0 || (segment.pageOffset ?? 0) > 0) {
       if (targetBinder) {
         // Apply offset to target binder
         const currentSlot = binderNextSlot.get(targetBinder.id) ?? 0
-        binderNextSlot.set(targetBinder.id, currentSlot + segment.offset)
+        binderNextSlot.set(targetBinder.id, Math.max(0, currentSlot + offsetFor(targetBinder)))
       } else {
         // Apply offset to first binder with space
         const available = findBinderWithSpace()
         if (available) {
-          binderNextSlot.set(available.binder.id, available.slot + segment.offset)
+          binderNextSlot.set(available.binder.id, Math.max(0, available.slot + offsetFor(available.binder)))
         }
       }
     }
@@ -153,7 +163,8 @@ export async function calculatePlacements(
         }
 
         const slot = binderNextSlot.get(placementBinder.id) ?? 0
-        placeCard(card, segment.id, cardIndex, placementBinder, placementBinderIndex, slot)
+        const face = segment.backFaces?.[cardIndex] ?? 0
+        placeCard(card, segment.id, cardIndex, placementBinder, placementBinderIndex, slot, face)
       } else {
         segmentOverflow++
       }
