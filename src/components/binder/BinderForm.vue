@@ -4,6 +4,7 @@ import type { Binder, ContainerType } from '@/types'
 import { getTargetDimensions, getBinderImage } from '@/utils/binderImages'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import ColorField from '@/components/common/ColorField.vue'
 
 const props = defineProps<{
   binder?: Binder
@@ -11,8 +12,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   submit: [data:
-    | { name: string; type: 'binder'; pageCount: number; slotsPerPage: number; coverImage?: File | null }
-    | { name: string; type: 'box'; coverImage?: File | null }
+    | { name: string; type: 'binder'; pageCount: number; slotsPerPage: number; coverImage?: File | null; outsideColor?: string; insideColor?: string }
+    | { name: string; type: 'box'; coverImage?: File | null; outsideColor?: string; insideColor?: string }
   ]
   cancel: []
 }>()
@@ -21,6 +22,8 @@ const name = ref(props.binder?.name ?? '')
 const containerType = ref<ContainerType>(props.binder?.type ?? 'binder')
 const pageCount = ref(props.binder?.type === 'binder' ? props.binder.pageCount : 40)
 const slotsPerPage = ref(props.binder?.type === 'binder' ? props.binder.slotsPerPage : 9)
+const outsideColor = ref<string | undefined>(props.binder?.outsideColor)
+const insideColor = ref<string | undefined>(props.binder?.insideColor)
 const coverImageFile = ref<File | null>(null)
 const coverImagePreview = ref<string | null>(null)
 const existingImageUrl = ref<string | null>(null)
@@ -63,6 +66,8 @@ watch(() => props.binder, async (newBinder) => {
     pageCount.value = 40
     slotsPerPage.value = 9
   }
+  outsideColor.value = newBinder?.outsideColor
+  insideColor.value = newBinder?.insideColor
   coverImageFile.value = null
   coverImagePreview.value = null
   shouldRemoveCoverImage.value = false
@@ -136,13 +141,17 @@ function handleSubmit() {
       type: 'binder' as const,
       pageCount: pageCount.value,
       slotsPerPage: slotsPerPage.value,
-      coverImage: shouldRemoveCoverImage.value ? null : (coverImageFile.value ?? undefined)
+      coverImage: shouldRemoveCoverImage.value ? null : (coverImageFile.value ?? undefined),
+      outsideColor: outsideColor.value,
+      insideColor: insideColor.value
     })
   } else {
     emit('submit', {
       name: name.value.trim(),
       type: 'box' as const,
-      coverImage: shouldRemoveCoverImage.value ? null : (coverImageFile.value ?? undefined)
+      coverImage: shouldRemoveCoverImage.value ? null : (coverImageFile.value ?? undefined),
+      outsideColor: outsideColor.value,
+      insideColor: insideColor.value
     })
   }
 }
@@ -212,6 +221,19 @@ const selectClass =
         accept="image/*"
         class="rounded-md border border-input bg-surface-2 p-2 text-sm text-ink-soft outline-none file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-primary-foreground hover:file:brightness-110"
         @change="handleImageSelected"
+      />
+    </div>
+
+    <div v-if="containerType === 'binder'" class="flex flex-col gap-4">
+      <ColorField
+        v-model="outsideColor"
+        label="Outside color"
+        help-text="Shown on the binder exterior when there's no cover image."
+      />
+      <ColorField
+        v-model="insideColor"
+        label="Inside color"
+        help-text="Shown on the inside covers when the binder is open."
       />
     </div>
 

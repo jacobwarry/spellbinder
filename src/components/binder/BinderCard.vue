@@ -4,16 +4,28 @@ import type { Binder } from '@/types'
 import { getBinderImage, binderImageVersion } from '@/utils/binderImages'
 import { Pencil, Trash2, ImageIcon } from 'lucide-vue-next'
 import ProgressBar from '@/components/common/ProgressBar.vue'
+import { formatEurAmount } from '@/utils/price'
+import { coverageLabel, missingCoverageLabel, type ValueSummary } from '@/utils/value'
 
 const props = withDefaults(defineProps<{
   binder: Binder
   plannedCards?: number
   ownedCards?: number
+  value?: ValueSummary
   selected?: boolean
   showActions?: boolean
 }>(), {
   showActions: true
 })
+
+const valueLabel = computed(() =>
+  props.value && props.value.pricedCount > 0 ? formatEurAmount(props.value.value) : null
+)
+const valueTitle = computed(() => (props.value ? coverageLabel(props.value) : undefined))
+const missingLabel = computed(() =>
+  props.value && props.value.missingPricedCount > 0 ? formatEurAmount(props.value.missingValue) : null
+)
+const missingTitle = computed(() => (props.value ? missingCoverageLabel(props.value) : undefined))
 
 defineEmits<{
   edit: [binder: Binder]
@@ -78,9 +90,10 @@ onUnmounted(() => {
     <div
       v-if="binder.type === 'binder'"
       class="grid h-21 w-15 shrink-0 place-items-center overflow-hidden rounded border border-line bg-surface-2"
+      :style="!coverImageUrl && binder.outsideColor ? { background: binder.outsideColor } : undefined"
     >
       <img v-if="coverImageUrl" :src="coverImageUrl" :alt="`${binder.name} cover`" class="h-full w-full object-cover" />
-      <ImageIcon v-else :size="20" class="text-ink-faint" aria-hidden="true" />
+      <ImageIcon v-else-if="!binder.outsideColor" :size="20" class="text-ink-faint" aria-hidden="true" />
     </div>
     <div class="min-w-0 flex-1" :class="showActions && 'pr-14'">
       <h3 class="flex items-center gap-2 text-sm font-semibold">
@@ -102,6 +115,11 @@ onUnmounted(() => {
             {{ ownedCards ?? 0 }}/{{ plannedCards }} · {{ ownedPercentage }}%
           </span>
         </div>
+        <!-- Owned value (brand) + muted cost-to-complete for the missing cards -->
+        <p v-if="valueLabel || missingLabel" class="mt-1 text-xs font-semibold tabular-nums">
+          <span v-if="valueLabel" class="text-brand" :title="valueTitle ?? undefined">{{ valueLabel }}</span>
+          <span v-if="missingLabel" class="text-ink-faint" :class="valueLabel && 'ml-2'" :title="missingTitle ?? undefined">+{{ missingLabel }}</span>
+        </p>
       </template>
       <p v-else class="mt-0.5 text-sm text-ink-soft tabular-nums">
         <template v-if="binder.type === 'binder'">{{ capacity }} cards · {{ binder.pageCount }} pages</template>

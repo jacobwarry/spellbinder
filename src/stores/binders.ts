@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Binder, Container, PhysicalBinder, StorageBox } from '@/types'
+import type { Binder, Container, PhysicalBinder, StorageBox, BoxSortMode } from '@/types'
 import { processBinderImage, saveBinderImage, deleteBinderImage } from '@/utils/binderImages'
 
 const STORAGE_KEY = 'spellbinder-binders'
@@ -54,7 +54,8 @@ export const useBindersStore = defineStore('binders', () => {
     containerConfig:
       | { type: 'binder'; pageCount: number; slotsPerPage: number }
       | { type: 'box' },
-    coverImage?: File
+    coverImage?: File,
+    colors?: { outsideColor?: string; insideColor?: string }
   ): Promise<Container> {
     let container: Container
 
@@ -65,14 +66,18 @@ export const useBindersStore = defineStore('binders', () => {
         type: 'binder',
         pageCount: containerConfig.pageCount,
         slotsPerPage: containerConfig.slotsPerPage,
-        hasCoverImage: false
+        hasCoverImage: false,
+        outsideColor: colors?.outsideColor,
+        insideColor: colors?.insideColor
       }
     } else {
       container = {
         id: generateId(),
         name,
         type: 'box',
-        hasCoverImage: false
+        hasCoverImage: false,
+        outsideColor: colors?.outsideColor,
+        insideColor: colors?.insideColor
       }
     }
 
@@ -156,6 +161,17 @@ export const useBindersStore = defineStore('binders', () => {
     return ids.map(id => binderMap.value.get(id)).filter((b): b is Binder => b !== undefined)
   }
 
+  // Display-only sort order for a storage box. Kept off updateBinder because the
+  // union's Omit collapses to shared keys, so sortMode isn't assignable there.
+  function setBoxSortMode(id: string, sortMode: BoxSortMode): void {
+    const index = binders.value.findIndex(b => b.id === id)
+    const box = binders.value[index]
+    if (box && box.type === 'box') {
+      binders.value[index] = { ...box, sortMode }
+      saveToStorage(binders.value)
+    }
+  }
+
   return {
     binders,
     binderMap,
@@ -164,6 +180,7 @@ export const useBindersStore = defineStore('binders', () => {
     addBinder,
     updateBinder,
     removeBinder,
-    getBindersInOrder
+    getBindersInOrder,
+    setBoxSortMode
   }
 })

@@ -10,8 +10,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   submit: [data:
-    | { name: string; type: 'binder'; pageCount: number; slotsPerPage: number; coverImage?: File | null }
-    | { name: string; type: 'box'; coverImage?: File | null }
+    | { name: string; type: 'binder'; pageCount: number; slotsPerPage: number; coverImage?: File | null; outsideColor?: string; insideColor?: string }
+    | { name: string; type: 'box'; coverImage?: File | null; outsideColor?: string; insideColor?: string }
   ]
   cancel: []
 }>()

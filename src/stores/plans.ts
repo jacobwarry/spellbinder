@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { BinderPlan } from '@/types'
 import { useSegmentsStore } from './segments'
+import { useBindersStore } from './binders'
 
 const STORAGE_KEY = 'spellbinder-plans'
 
@@ -66,15 +67,27 @@ export const usePlansStore = defineStore('plans', () => {
     }
   }
 
+  // Same idea for storage: drop the binder record (and its cover image) once no
+  // remaining plan references it, so unlinking never leaves an orphan behind.
+  function deleteBinderIfUnreferenced(binderId: string): void {
+    const stillReferenced = plans.value.some(p => p.binderIds.includes(binderId))
+    if (!stillReferenced) {
+      void useBindersStore().removeBinder(binderId)
+    }
+  }
+
   function removePlan(id: string): void {
     const index = plans.value.findIndex(p => p.id === id)
     if (index !== -1) {
       const [removed] = plans.value.splice(index, 1)
       saveToStorage(plans.value)
-      // Clean up segments that no remaining plan references.
+      // Clean up segments + storage that no remaining plan references.
       if (removed) {
         for (const segmentId of removed.segmentIds) {
           deleteSegmentIfUnreferenced(segmentId)
+        }
+        for (const binderId of removed.binderIds) {
+          deleteBinderIfUnreferenced(binderId)
         }
       }
     }
@@ -95,6 +108,8 @@ export const usePlansStore = defineStore('plans', () => {
       if (index !== -1) {
         plan.binderIds.splice(index, 1)
         saveToStorage(plans.value)
+        // Removing storage from its set deletes the binder itself (unless shared).
+        deleteBinderIfUnreferenced(binderId)
       }
     }
   }
