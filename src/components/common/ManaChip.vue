@@ -1,27 +1,24 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import type { Mana } from './types'
+import ManaSymbol from './ManaSymbol.vue'
 
-const props = withDefaults(
+// An interactive colour pip (used by the collection/colour filters): the official
+// Scryfall mana SVG, with a ring when selected. Symbol rendering lives in ManaSymbol.
+withDefaults(
   defineProps<{ color: Mana; selected?: boolean; size?: number }>(),
   { selected: false, size: 32 }
 )
-
-const bg = computed(() => `var(--mana-${props.color.toLowerCase()})`)
-// White/Colorless are light fills → dark glyph; the rest take white.
-const fg = computed(() => (props.color === 'W' || props.color === 'C' ? '#3a2f12' : '#fff'))
 </script>
 
 <template>
   <span
-    class="inline-grid place-items-center rounded-full font-bold select-none"
+    class="inline-grid place-items-center rounded-full select-none"
     :style="{
       width: size + 'px',
       height: size + 'px',
-      fontSize: Math.round(size * 0.4) + 'px',
-      background: bg,
-      color: fg,
       boxShadow: selected ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : undefined
     }"
-  >{{ color }}</span>
+  >
+    <ManaSymbol :symbol="color" :size="size" />
+  </span>
 </template>

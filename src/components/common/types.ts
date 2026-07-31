@@ -14,4 +14,15 @@ export interface BinderSlotCard {
   image?: string
   /** True for multicolor cards (shown gold rather than the single-color art/thumbnail). */
   multicolor?: boolean
+  /** Latest Scryfall EUR prices (raw strings, e.g. "7.24") when fetched; absent otherwise. */
+  eur?: string | null
+  eurFoil?: string | null
+  /** When the prices above were retrieved (ms epoch), surfaced as a hover tooltip. */
+  priceFetchedAt?: number
+  /** Which finish(es) are owned; drives which price is the reference vs muted. */
+  ownsNonFoil?: boolean
+  ownsFoil?: boolean
+  /** Which finishes this printing exists in; restricts what can be marked owned. */
+  canNonFoil?: boolean
+  canFoil?: boolean
 }
