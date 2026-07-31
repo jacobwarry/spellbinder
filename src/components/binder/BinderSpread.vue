@@ -12,9 +12,10 @@
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import { ChevronLeft, ChevronRight, LayoutGrid, X, CheckCheck } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, LayoutGrid, X, CheckCheck, Search } from 'lucide-vue-next'
 import BinderSlot from './BinderSlot.vue'
 import { useBinderSpread, SPREAD_GEOMETRY, SLOT_ASPECT } from '@/composables/useBinderSpread'
+import { normalizeForSearch, cardMatchesQuery } from '@/utils/cardSearch'
 import type { BinderSlotCard } from '@/components/common/types'
 
 const props = withDefaults(
@@ -26,6 +27,8 @@ const props = withDefaults(
     pages: (BinderSlotCard | null)[][]
     /** Optional uploaded binder cover, shown on the front/back cover. */
     coverImage?: string
+    /** Optional solid color for the inside covers; overrides the cover image there. */
+    insideColor?: string
     initialPage?: number
     /** Host sets true while a modal/sheet is open to suspend nav (keys + swipe). */
     paused?: boolean
@@ -41,6 +44,7 @@ const emit = defineEmits<{
   select: [pageNumber: number, slotIndex: number]
   insert: [pageNumber: number, slotIndex: number]
   quickOwn: [pageNumber: number, slotIndex: number]
+  quickFoil: [pageNumber: number, slotIndex: number]
   pageChange: [page: number]
   /** The page number(s) currently visible (1 or 2 for a spread). */
   viewChange: [pages: number[]]
@@ -118,6 +122,21 @@ function slotsForPage(page: number): (BinderSlotCard | null)[] {
   return props.pages[page - 1] ?? []
 }
 
+// ---- highlight filter ----
+// Typing here dims every slot on the spread except the cards that match, so a
+// searched card pops out. Matching is forgiving (see cardSearch): case-, accent-
+// and punctuation-insensitive substring across the fields printed on the card.
+const query = ref('')
+const normalizedQuery = computed(() => normalizeForSearch(query.value))
+const searching = computed(() => normalizedQuery.value.length > 0)
+function slotDimmed(card: BinderSlotCard | null): boolean {
+  if (!searching.value) return false
+  return !card || !cardMatchesQuery(card, normalizedQuery.value)
+}
+function slotHighlighted(card: BinderSlotCard | null): boolean {
+  return searching.value && !!card && cardMatchesQuery(card, normalizedQuery.value)
+}
+
 // ---- navigation ----
 function turn(dir: 1 | -1) {
   if (props.paused) return
@@ -131,6 +150,9 @@ function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') overviewOpen.value = false
     return
   }
+  // Don't hijack arrow keys while the user is typing in the highlight filter.
+  const t = e.target as HTMLElement | null
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
   if (props.paused) return
   if (e.key === 'ArrowRight') turn(1)
   else if (e.key === 'ArrowLeft') turn(-1)
@@ -138,13 +160,36 @@ function onKey(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
+// ---- scroll wheel turns pages ----
+// A single wheel/trackpad gesture fires many events, so accumulate delta and
+// enforce a short cooldown to turn one page per intentional scroll.
+let wheelAccum = 0
+let wheelCooldown = false
+let wheelTimer: ReturnType<typeof setTimeout> | null = null
+const WHEEL_THRESHOLD = 30
+
+function onWheel(e: WheelEvent) {
+  if (props.paused || overviewOpen.value) return
+  e.preventDefault()
+  if (wheelCooldown) return
+  wheelAccum += e.deltaY
+  if (Math.abs(wheelAccum) < WHEEL_THRESHOLD) return
+  turn(wheelAccum > 0 ? 1 : -1)
+  wheelAccum = 0
+  wheelCooldown = true
+  if (wheelTimer) clearTimeout(wheelTimer)
+  wheelTimer = setTimeout(() => { wheelCooldown = false }, 260)
+}
+onBeforeUnmount(() => { if (wheelTimer) clearTimeout(wheelTimer) })
+
 // ---- drag / swipe with live tracking ----
 let drag: { x: number; moved: boolean; onCard: boolean } | null = null
 const dragX = ref(0)
 const leafStyle = computed(() => (dragX.value ? { transform: `translateX(${dragX.value * 0.5}px)` } : {}))
 
 function onPointerDown(e: PointerEvent) {
-  const onCard = !!(e.target as Element)?.closest?.('button')
+  // Treat buttons and inputs as interactive: don't start a page-turn swipe on them.
+  const onCard = !!(e.target as Element)?.closest?.('button, input')
   drag = { x: e.clientX, moved: false, onCard }
   if (!onCard) stageRef.value?.setPointerCapture?.(e.pointerId)
 }
@@ -186,6 +231,25 @@ function jumpTo(page: number) {
         <p class="truncate font-display text-sm font-bold">{{ name }}</p>
         <p class="text-xs text-ink-faint tabular-nums">{{ geom.cols }}×{{ geom.rows }} · {{ pageCount }} pages</p>
       </div>
+      <div class="relative min-w-0 max-w-xs flex-1">
+        <Search :size="15" class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+        <input
+          v-model="query"
+          type="text"
+          placeholder="Highlight cards…"
+          aria-label="Highlight matching cards on the spread"
+          class="h-10 w-full rounded-md border border-line bg-surface-2 pl-8 pr-8 text-sm text-foreground outline-none transition-colors placeholder:text-ink-faint focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <button
+          v-if="query"
+          type="button"
+          class="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-ink-faint outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="Clear highlight"
+          @click="query = ''"
+        >
+          <X :size="14" />
+        </button>
+      </div>
       <div class="flex items-center gap-2">
         <span class="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
           <span class="h-1.5 w-1.5 rounded-full bg-brand"></span>{{ mode }}
@@ -223,6 +287,7 @@ function jumpTo(page: number) {
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
       @pointercancel="dragX = 0; drag = null"
+      @wheel="onWheel"
     >
       <div class="flex items-start justify-center" :style="leafStyle">
         <template v-for="(part, i) in leafParts" :key="i">
@@ -244,17 +309,17 @@ function jumpTo(page: number) {
             </div>
           </div>
 
-          <!-- inside cover: the uploaded binder cover, or a hatched placeholder -->
+          <!-- inside cover: a chosen inside color, the uploaded cover, or a hatched placeholder -->
           <div
             v-else-if="part.type === 'cover'"
             class="grid place-items-center overflow-hidden rounded-xl border p-3 text-center text-xs text-ink-faint"
-            :class="coverImage ? 'border-line-strong' : 'border-dashed border-line-strong'"
+            :class="insideColor || coverImage ? 'border-line-strong' : 'border-dashed border-line-strong'"
             :style="{ width: pageWidth + 'px', height: pageHeight + 'px',
-              background: coverImage ? undefined : 'repeating-linear-gradient(135deg,var(--surface-2),var(--surface-2) 10px,var(--surface) 10px,var(--surface) 20px)' }"
+              background: insideColor ? insideColor : coverImage ? undefined : 'repeating-linear-gradient(135deg,var(--surface-2),var(--surface-2) 10px,var(--surface) 10px,var(--surface) 20px)' }"
             aria-hidden="true"
           >
-            <img v-if="coverImage" :src="coverImage" alt="" class="h-full w-full object-cover" />
-            <span v-else>{{ part.label }}</span>
+            <img v-if="!insideColor && coverImage" :src="coverImage" alt="" class="h-full w-full object-cover" />
+            <span v-else-if="!insideColor">{{ part.label }}</span>
           </div>
 
           <!-- a binder page -->
@@ -270,9 +335,12 @@ function jumpTo(page: number) {
                 :key="idx"
                 :slot-number="idx + 1"
                 :card="card ?? undefined"
+                :dimmed="slotDimmed(card)"
+                :highlighted="slotHighlighted(card)"
                 @select="emit('select', part.page, idx)"
                 @insert="emit('insert', part.page, idx)"
                 @toggle-owned="emit('quickOwn', part.page, idx)"
+                @toggle-foil="emit('quickFoil', part.page, idx)"
               />
             </div>
           </div>
