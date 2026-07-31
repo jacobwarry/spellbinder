@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { ScryfallSet, ScryfallCard, BinderPlan, Binder, Segment } from '@/types'
+import type { ScryfallSet, ScryfallCard, BinderPlan, Binder, Segment, BoxSortMode } from '@/types'
 import { getPlacementOwnershipKey, type CardPlacement } from '@/types/placement'
-import { getCardImageUri } from '@/api/scryfall'
+import { getCardImageUri, getCardFaceName, isDoubleFaced, refreshCard, fetchSets, compareCollectorNumber } from '@/api/scryfall'
 import { getBinderImage, binderImageVersion } from '@/utils/binderImages'
-import { useBindersStore, useSegmentsStore, usePlansStore, useCollectionStore } from '@/stores'
+import { useBindersStore, useSegmentsStore, usePlansStore, useCollectionStore, usePricesStore } from '@/stores'
 import { calculatePlacements, type PlacementResult } from '@/composables/usePlacement'
-import { useAllPlacements, buildBinderStats } from '@/composables/useAllPlacements'
+import { useAllPlacements, buildBinderStats, buildBinderValues, sumPlacementsValue } from '@/composables/useAllPlacements'
+import { coverageLabel, missingCoverageLabel, emptyValue, type ValueSummary } from '@/utils/value'
+import { formatEurAmount } from '@/utils/price'
 import type { Mana, Ownership, BinderSlotCard } from '@/components/common/types'
 import BinderCard from '@/components/binder/BinderCard.vue'
 import StorageDialog from '@/components/binder/StorageDialog.vue'
 import BinderSpread from '@/components/binder/BinderSpread.vue'
 import CardActionSheet from '@/components/binder/CardActionSheet.vue'
 import BoxView from '@/components/binder/BoxView.vue'
+import SetStats from '@/components/sets/SetStats.vue'
+import { SegmentedControl } from '@/components/ui/segmented'
 import SegmentCard from '@/components/segments/SegmentCard.vue'
 import AddCardsDialog from '@/components/sets/AddCardsDialog.vue'
 import CardSearchModal from '@/components/cards/CardSearchModal.vue'
@@ -23,9 +27,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Dialog } from '@/components/ui/dialog'
-import { isStorageBox } from '@/stores/binders'
-import { Plus, ArrowLeft, Pencil, Check, X, Trash2, Lightbulb } from 'lucide-vue-next'
+import { DropdownMenu, DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { isStorageBox, isPhysicalBinder } from '@/stores/binders'
+import { Plus, ArrowLeft, Pencil, Check, X, Trash2, Lightbulb, Coins, Upload } from 'lucide-vue-next'
 import NewSetDialog from '@/components/plans/NewSetDialog.vue'
+import ImportSetDialog from '@/components/sets/ImportSetDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +40,7 @@ const bindersStore = useBindersStore()
 const segmentsStore = useSegmentsStore()
 const plansStore = usePlansStore()
 const collectionStore = useCollectionStore()
+const pricesStore = usePricesStore()
 
 // Get current plan ID from route params
 const currentPlanId = computed(() => {
@@ -43,9 +50,14 @@ const currentPlanId = computed(() => {
 const showBinderForm = ref(false)
 const editingBinder = ref<Binder | null>(null)
 const showNewSetDialog = ref(false)
+const showImportDialog = ref(false)
 // Unified "add cards from a set" flow. 'segment' = add as a plan segment,
 // 'box' = add cards into the currently-viewed storage box (auto-owned).
 const addCardsMode = ref<'segment' | 'box' | null>(null)
+// Append multi-selected cards to an EXISTING segment. `set` is pre-resolved for
+// set-backed segments (skips the picker's set-selector step); null for custom
+// sections, which let you pick any set first.
+const appendTarget = ref<{ segmentId: string; set: ScryfallSet | null } | null>(null)
 // User-adjustable card size for the box grid (tile min-width, px), persisted.
 const boxCardSize = useCardSize('spellbinder-cardsize-box', 170)
 const placementResult = ref<PlacementResult | null>(null)
@@ -60,16 +72,22 @@ const planNameInput = ref('')
 // (storage + segments). Toggling this swaps back to the full set list to switch.
 const showSetList = ref(false)
 const showDeleteConfirm = ref(false)
-const showCardSearch = ref(false)
-const insertTargetSlot = ref<{
-  binderId: string
-  pageNumber: number
-  slotOnPage: number
-  segmentId: string
-  segmentName: string
-  setCode: string
-  insertBeforeCardId: string | null
-} | null>(null)
+// Drives the card-search dialog. 'insert' places the picked card at a specific binder
+// slot (into the neighbouring segment); 'append' adds it to the end of a segment
+// (used for custom sections, which aren't tied to one set).
+type CardSearchTarget =
+  | {
+      mode: 'insert'
+      binderId: string
+      pageNumber: number
+      slotOnPage: number
+      segmentId: string
+      segmentName: string
+      setCode: string
+      insertBeforeCardId: string | null
+    }
+  | { mode: 'append'; segmentId: string; segmentName: string; setCode: string }
+const cardSearch = ref<CardSearchTarget | null>(null)
 
 const currentPlan = computed(() =>
   currentPlanId.value ? plansStore.getPlan(currentPlanId.value) : null
@@ -79,8 +97,28 @@ const sortedPlans = computed(() =>
   [...plansStore.plans].sort((a, b) => a.name.localeCompare(b.name))
 )
 
-const planOwnedPercentage = computed(() => {
-  const percentages = new Map<string, number>()
+// Overview filter: narrow the set grid to sets that contain a given storage type.
+// A set can hold both, but in practice it's usually one or the other, so this is a
+// quick way to see just your binder sets or just your box sets.
+const storageFilter = ref<'all' | 'binders' | 'boxes'>('all')
+const storageFilterOptions = [
+  { value: 'all' as const, label: 'All' },
+  { value: 'binders' as const, label: 'Binders' },
+  { value: 'boxes' as const, label: 'Boxes' }
+]
+const filteredPlans = computed(() => {
+  if (storageFilter.value === 'all') return sortedPlans.value
+  return sortedPlans.value.filter((plan) => {
+    const containers = bindersStore.getBindersInOrder(plan.binderIds)
+    return storageFilter.value === 'binders'
+      ? containers.some(isPhysicalBinder)
+      : containers.some(isStorageBox)
+  })
+})
+
+interface PlanCompletion { percent: number; owned: number; total: number }
+const planCompletion = computed(() => {
+  const m = new Map<string, PlanCompletion>()
   for (const plan of plansStore.plans) {
     const segments = segmentsStore.getSegmentsInOrder(plan.segmentIds)
     let totalCards = 0
@@ -98,9 +136,25 @@ const planOwnedPercentage = computed(() => {
       }
     }
     const effectiveTotal = totalCards - skippedCards
-    percentages.set(plan.id, effectiveTotal > 0 ? Math.round((ownedCards / effectiveTotal) * 100) : 0)
+    m.set(plan.id, {
+      percent: effectiveTotal > 0 ? Math.round((ownedCards / effectiveTotal) * 100) : 0,
+      owned: ownedCards,
+      total: effectiveTotal
+    })
   }
-  return percentages
+  return m
+})
+
+// A set stored only in boxes has no fixed capacity to complete toward (boxes are
+// unlimited), so a completion % is meaningless — we show the owned count instead.
+// Mixed sets (any physical binder present) keep the percentage.
+const planIsBoxOnly = computed(() => {
+  const m = new Map<string, boolean>()
+  for (const plan of plansStore.plans) {
+    const containers = bindersStore.getBindersInOrder(plan.binderIds)
+    m.set(plan.id, containers.length > 0 && containers.every(isStorageBox))
+  }
+  return m
 })
 
 // Calculate cards per binder for all plans (for overview section)
@@ -110,6 +164,67 @@ const { allPlacements } = useAllPlacements()
 const allPlansBinderStats = computed(() =>
   buildBinderStats(allPlacements.value.values(), (key) => collectionStore.isOwned(key))
 )
+
+// Owned EUR value (reactive on prices + ownership) for the overview: per binder and
+// rolled up per plan/set. Reads the prices store so it recomputes as prices land.
+const getPrice = (id: string) => pricesStore.getPrice(id)
+const ownedNonFoil = (k: string) => collectionStore.isOwnedNonFoil(k)
+const ownedFoil = (k: string) => collectionStore.isOwnedFoil(k)
+const skipped = (k: string) => collectionStore.isSkipped(k)
+const allPlansBinderValues = computed(() =>
+  buildBinderValues(allPlacements.value.values(), getPrice, ownedNonFoil, ownedFoil, skipped)
+)
+const planValues = computed(() => {
+  const m = new Map<string, ValueSummary>()
+  for (const [planId, result] of allPlacements.value) {
+    m.set(planId, sumPlacementsValue(result.placements, getPrice, ownedNonFoil, ownedFoil, skipped))
+  }
+  return m
+})
+// Combined owned value across every set, for the overview banner.
+// Every unique card id across all sets — the batch "fetch all prices" target.
+const allSetCardIds = computed(() => {
+  const ids = new Set<string>()
+  for (const plan of plansStore.plans) {
+    for (const seg of segmentsStore.getSegmentsInOrder(plan.segmentIds)) {
+      for (const id of seg.cardIds) ids.add(id)
+    }
+  }
+  return [...ids]
+})
+function fetchAllPrices() {
+  void pricesStore.fetchPricesFor(allSetCardIds.value)
+}
+
+const allSetsValue = computed(() => {
+  const total = emptyValue()
+  for (const v of planValues.value.values()) {
+    total.value += v.value
+    total.ownedCount += v.ownedCount
+    total.pricedCount += v.pricedCount
+    total.missingValue += v.missingValue
+    total.missingCount += v.missingCount
+    total.missingPricedCount += v.missingPricedCount
+  }
+  return total
+})
+
+function planValueLabel(planId: string): string | null {
+  const v = planValues.value.get(planId)
+  return v && v.pricedCount > 0 ? formatEurAmount(v.value) : null
+}
+function planValueTitle(planId: string): string | undefined {
+  const v = planValues.value.get(planId)
+  return v ? coverageLabel(v) : undefined
+}
+function planMissingLabel(planId: string): string | null {
+  const v = planValues.value.get(planId)
+  return v && v.missingPricedCount > 0 ? formatEurAmount(v.missingValue) : null
+}
+function planMissingTitle(planId: string): string | undefined {
+  const v = planValues.value.get(planId)
+  return v ? missingCoverageLabel(v) : undefined
+}
 
 const planBinders = computed(() =>
   currentPlan.value ? bindersStore.getBindersInOrder(currentPlan.value.binderIds) : []
@@ -131,6 +246,7 @@ const planHasBox = computed(() => planBinders.value.some(isStorageBox))
 watch(currentPlanId, () => {
   editingPlanName.value = false
   showDeleteConfirm.value = false
+  mainView.value = 'binder'
 })
 
 const viewingBinder = computed(() =>
@@ -141,6 +257,14 @@ const currentBinderPlacements = computed(() => {
   if (!viewingBinder.value || !placementResult.value) return []
   return placementResult.value.placements.filter(p => p.binderId === viewingBinder.value!.id)
 })
+
+// Main-area tab for a selected set: the card viewer vs the stats/search view.
+const mainView = ref<'binder' | 'stats'>('binder')
+const mainViewOptions = [
+  { value: 'binder' as const, label: 'Cards' },
+  { value: 'stats' as const, label: 'Stats' }
+]
+const planPlacements = computed(() => placementResult.value?.placements ?? [])
 
 // Segments with at least one card on the page(s) currently visible in the viewer.
 // Used to highlight the segment you're looking at; updates live as pages turn.
@@ -169,16 +293,39 @@ function placementStatus(p: CardPlacement): Ownership {
   return collectionStore.isOwned(key) ? 'owned' : collectionStore.isSkipped(key) ? 'skipped' : 'missing'
 }
 function placementToSlot(p: CardPlacement): BinderSlotCard {
+  const price = pricesStore.getPrice(p.card.id)
+  const key = getPlacementOwnershipKey(p)
   return {
-    name: p.card.name,
+    name: getCardFaceName(p.card, p.face ?? 0),
     set: p.card.set.toUpperCase(),
     number: p.card.collector_number.padStart(4, '0'),
     color: cardMana(p.card),
     multicolor: (p.card.color_identity?.length ?? 0) > 1,
     status: placementStatus(p),
     rarity: rarityShort(p.card.rarity),
-    image: getCardImageUri(p.card, 'normal') ?? undefined
+    image: getCardImageUri(p.card, 'normal', p.face ?? 0) ?? undefined,
+    eur: price?.eur,
+    eurFoil: price?.eurFoil,
+    priceFetchedAt: price?.fetchedAt,
+    ownsNonFoil: collectionStore.isOwnedNonFoil(key),
+    ownsFoil: collectionStore.isOwnedFoil(key),
+    canNonFoil: p.card.finishes ? p.card.finishes.includes('nonfoil') : true,
+    canFoil: p.card.finishes ? p.card.finishes.includes('foil') : true
   }
+}
+
+// Card ids to price when the user clicks "Fetch prices". For binders this is the
+// current spread (the pages on screen); boxes have no spreads, so we take the whole box.
+const visibleCardIds = computed(() => {
+  if (!viewingBinder.value) return []
+  if (viewingBinder.value.type === 'box') {
+    return currentBinderPlacements.value.map(p => p.card.id)
+  }
+  const pages = new Set(visiblePages.value)
+  return currentBinderPlacements.value.filter(p => pages.has(p.pageNumber)).map(p => p.card.id)
+})
+function fetchVisiblePrices() {
+  void pricesStore.fetchPricesFor(visibleCardIds.value)
 }
 
 // pages[pageIndex][slotIndex] = slot card (or null) + a lookup back to the placement.
@@ -221,21 +368,79 @@ const hasNextBinderView = computed(() => viewingBinderIndex.value >= 0 && viewin
 
 // Storage boxes are linear: render their placements in order, no page grid.
 const boxItems = computed(() => {
-  if (!viewingBinder.value || viewingBinder.value.type !== 'box') return []
-  return currentBinderPlacements.value.map(p => ({ slot: placementToSlot(p), placement: p }))
+  const box = viewingBinder.value
+  if (!box || box.type !== 'box') return []
+  const items = currentBinderPlacements.value.map(p => ({ slot: placementToSlot(p), placement: p }))
+  // 'added' keeps placement order; name/number sort display-only (see BoxSortMode).
+  const mode = box.sortMode ?? 'added'
+  if (mode === 'name') {
+    items.sort((a, b) =>
+      a.placement.card.name.localeCompare(b.placement.card.name) ||
+      compareCollectorNumber(a.placement.card, b.placement.card)
+    )
+  } else if (mode === 'number') {
+    items.sort((a, b) =>
+      compareCollectorNumber(a.placement.card, b.placement.card) ||
+      a.placement.card.name.localeCompare(b.placement.card.name)
+    )
+  }
+  return items
+})
+
+// Writable sort selector for the currently-viewed box; persists on the box.
+const boxSortMode = computed<BoxSortMode>({
+  get() {
+    const b = viewingBinder.value
+    return b && b.type === 'box' ? (b.sortMode ?? 'added') : 'added'
+  },
+  set(mode) {
+    const b = viewingBinder.value
+    if (b && b.type === 'box') bindersStore.setBoxSortMode(b.id, mode)
+  }
 })
 function onBoxSlotSelect(p: CardPlacement) {
   sheetRef.value = { segmentId: p.segmentId, cardIndex: p.cardIndexInSegment }
   sheetOpen.value = true
 }
 
+// A storage box holds physical cards: one slot = one card = one finish. So in a box,
+// choosing a finish is exclusive — picking one clears the other, and re-picking the
+// active finish clears ownership. (Binders track a printing's finishes independently,
+// so they keep the dual toggles.) Quantity is modeled as separate slots: importing N
+// copies already expands into N single-finish slots.
+const isBoxView = computed(() => viewingBinder.value?.type === 'box')
+function setBoxFinish(key: string, finish: 'nonfoil' | 'foil') {
+  const wasNonFoil = collectionStore.isOwnedNonFoil(key)
+  const wasFoil = collectionStore.isOwnedFoil(key)
+  if (finish === 'nonfoil') {
+    const next = !wasNonFoil
+    collectionStore.setOwned(key, next)
+    if (next && wasFoil) collectionStore.setFoilOwned(key, false)
+  } else {
+    const next = !wasFoil
+    collectionStore.setFoilOwned(key, next)
+    if (next && wasNonFoil) collectionStore.setOwned(key, false)
+  }
+}
+
 // Double-click shortcut: toggle owned without opening the sheet.
+// Double left-click toggles non-foil; double right-click toggles foil. Each is an
+// independent per-finish toggle (BinderSlot only fires the finish the printing allows).
 function onBinderQuickOwn(page: number, slot0: number) {
   const p = binderLayout.value?.meta.get(`${page}:${slot0}`)
   if (p) collectionStore.toggleOwned(getPlacementOwnershipKey(p))
 }
 function onBoxQuickOwn(p: CardPlacement) {
-  collectionStore.toggleOwned(getPlacementOwnershipKey(p))
+  setBoxFinish(getPlacementOwnershipKey(p), 'nonfoil')
+}
+// Double right-click shortcut: toggle the foil finish (BinderSlot only fires this
+// for printings that can be foil).
+function onBinderQuickFoil(page: number, slot0: number) {
+  const p = binderLayout.value?.meta.get(`${page}:${slot0}`)
+  if (p) collectionStore.toggleFoil(getPlacementOwnershipKey(p))
+}
+function onBoxQuickFoil(p: CardPlacement) {
+  setBoxFinish(getPlacementOwnershipKey(p), 'foil')
 }
 
 // Toggle owned for every card on the currently visible binder page(s).
@@ -281,6 +486,8 @@ const sheetCard = computed(() => {
   return {
     ...placementToSlot(p),
     spacerCount: segmentsStore.getSpacerCount(p.segmentId, p.cardIndexInSegment),
+    isDoubleFaced: isDoubleFaced(p.card),
+    isBackFace: (p.face ?? 0) === 1,
     location: viewingBinder.value?.type === 'box'
       ? `Box · #${p.slotOnPage}`
       : `Page ${p.pageNumber} · Slot ${p.slotOnPage}`
@@ -289,8 +496,9 @@ const sheetCard = computed(() => {
 
 // Suspend binder-spread nav (arrows/swipe) while any editor modal/sheet is open.
 const anyModalOpen = computed(() =>
-  sheetOpen.value || showCardSearch.value || !!addCardsMode.value ||
-  showBinderForm.value || showNewSetDialog.value
+  sheetOpen.value || !!cardSearch.value || !!addCardsMode.value ||
+  !!appendTarget.value || showBinderForm.value || showNewSetDialog.value ||
+  showImportDialog.value
 )
 
 function onBinderSlotSelect(page: number, slot0: number) {
@@ -302,13 +510,33 @@ function onBinderSlotSelect(page: number, slot0: number) {
 function onBinderSlotInsert(page: number, slot0: number) {
   handleInsertCard(page, slot0 + 1)
 }
-function onSheetToggleOwned() {
+function onSheetToggleNonFoil() {
   const p = sheetPlacement.value
-  if (p) collectionStore.toggleOwned(getPlacementOwnershipKey(p))
+  if (!p) return
+  const key = getPlacementOwnershipKey(p)
+  if (isBoxView.value) setBoxFinish(key, 'nonfoil')
+  else collectionStore.toggleOwned(key)
+}
+function onSheetToggleFoil() {
+  const p = sheetPlacement.value
+  if (!p) return
+  const key = getPlacementOwnershipKey(p)
+  if (isBoxView.value) setBoxFinish(key, 'foil')
+  else collectionStore.toggleFoil(key)
 }
 function onSheetToggleSkipped() {
   const p = sheetPlacement.value
   if (p) collectionStore.toggleSkipped(getPlacementOwnershipKey(p))
+}
+async function onSheetAddBackFace() {
+  const p = sheetPlacement.value
+  if (!p) return
+  segmentsStore.insertBackFaceAfter(p.segmentId, p.cardIndexInSegment)
+  sheetOpen.value = false
+  sheetRef.value = null
+  if (planBinders.value.length > 0 && planSegments.value.length > 0) {
+    placementResult.value = await calculatePlacements(planSegments.value, planBinders.value)
+  }
 }
 async function onSheetAddSpacer() {
   const p = sheetPlacement.value
@@ -318,9 +546,39 @@ async function onSheetRemoveSpacer() {
   const p = sheetPlacement.value
   if (p) await handleRemoveSpacer(p.segmentId, p.cardIndexInSegment)
 }
+function onSheetDetails() {
+  const p = sheetPlacement.value
+  if (p) router.push(`/card/${p.card.id}`)
+}
 function onSheetScryfall() {
   const p = sheetPlacement.value
   if (p) window.open(`https://scryfall.com/search?q=${encodeURIComponent(p.card.name)}`, '_blank', 'noopener')
+}
+function onSheetCardmarket() {
+  const p = sheetPlacement.value
+  if (!p) return
+  // Prefer the exact product link Scryfall gives us; fall back to a name search for
+  // cards cached before we captured purchase links.
+  const url = p.card.purchase_uris?.cardmarket
+    ?? `https://www.cardmarket.com/en/Magic/Products/Search?searchString=${encodeURIComponent(p.card.name)}`
+  window.open(url, '_blank', 'noopener')
+}
+
+// Force-refetch this printing from Scryfall (bypassing the cache) to pick up updated
+// image URLs or other changed data, then recalc so the fresh card flows into the view.
+const isRefreshingCard = ref(false)
+async function onSheetRefresh() {
+  const p = sheetPlacement.value
+  if (!p || isRefreshingCard.value) return
+  isRefreshingCard.value = true
+  try {
+    await refreshCard(p.card.id)
+    placementResult.value = await calculatePlacements(planSegments.value, planBinders.value)
+  } catch (error) {
+    console.error('Failed to refresh card data:', error)
+  } finally {
+    isRefreshingCard.value = false
+  }
 }
 async function onSheetRemove() {
   const p = sheetPlacement.value
@@ -344,6 +602,13 @@ const cardsPerBinder = computed(() => {
   }
   return counts
 })
+
+// Owned value per binder for the current plan's Storage list.
+const binderValues = computed(() =>
+  placementResult.value
+    ? buildBinderValues([placementResult.value], getPrice, ownedNonFoil, ownedFoil, skipped)
+    : new Map<string, ValueSummary>()
+)
 
 const ownedCardsPerBinder = computed(() => {
   const counts = new Map<string, number>()
@@ -406,6 +671,8 @@ function handleNewSetSubmit(data: { name: string; binderId?: string; segmentId?:
   // Add segment if provided
   if (data.segmentId) {
     plansStore.addSegmentToPlan(plan.id, data.segmentId)
+    const seg = segmentsStore.getSegment(data.segmentId)
+    if (seg?.cardIds.length) void pricesStore.fetchPricesFor(seg.cardIds)
   }
 
   showNewSetDialog.value = false
@@ -419,6 +686,13 @@ function handleNewSetSubmit(data: { name: string; binderId?: string; segmentId?:
 
 function handleNewSetCancel() {
   showNewSetDialog.value = false
+}
+
+// The import dialog resolves cards and creates the binder + segment itself, then
+// emits the same shape as NewSetDialog — so plan creation/linking is shared.
+function handleImportSubmit(data: { name: string; binderId?: string; segmentId?: string }) {
+  showImportDialog.value = false
+  handleNewSetSubmit(data)
 }
 
 function selectPlan(plan: BinderPlan) {
@@ -453,11 +727,14 @@ function cancelEditPlanName() {
 }
 
 async function handleBinderSubmit(data:
-  | { name: string; type: 'binder'; pageCount: number; slotsPerPage: number; coverImage?: File | null }
-  | { name: string; type: 'box'; coverImage?: File | null }
+  | { name: string; type: 'binder'; pageCount: number; slotsPerPage: number; coverImage?: File | null; outsideColor?: string; insideColor?: string }
+  | { name: string; type: 'box'; coverImage?: File | null; outsideColor?: string; insideColor?: string }
 ) {
+  // The cover image is a File handled separately by the store — keep it out of
+  // the persisted-field updates so it isn't serialized onto the binder.
+  const { coverImage, ...fields } = data
   if (editingBinder.value) {
-    await bindersStore.updateBinder(editingBinder.value.id, data, data.coverImage)
+    await bindersStore.updateBinder(editingBinder.value.id, fields, coverImage)
   } else {
     const containerConfig = data.type === 'binder'
       ? { type: 'binder' as const, pageCount: data.pageCount, slotsPerPage: data.slotsPerPage }
@@ -466,7 +743,8 @@ async function handleBinderSubmit(data:
     const binder = await bindersStore.addBinder(
       data.name,
       containerConfig,
-      data.coverImage || undefined
+      coverImage || undefined,
+      { outsideColor: data.outsideColor, insideColor: data.insideColor }
     )
     if (currentPlanId.value) {
       plansStore.addBinderToPlan(currentPlanId.value, binder.id)
@@ -510,7 +788,18 @@ function onAddCardsConfirm({ set, cardIds }: { set: ScryfallSet; cardIds: string
     plansStore.addSegmentToPlan(currentPlanId.value, segment.id)
   }
 
+  // Pull prices for the freshly added cards so value shows without a manual fetch.
+  if (cardIds.length) void pricesStore.fetchPricesFor(cardIds)
+
   addCardsMode.value = null
+}
+
+// A set-less section for hand-picked cards from any set (promos, trailing extras).
+// Created empty and appended to the plan; fill it via the card's "Add card" button.
+function addCustomSection() {
+  if (!currentPlanId.value) return
+  const segment = segmentsStore.addCustomSegment('Custom section')
+  plansStore.addSegmentToPlan(currentPlanId.value, segment.id)
 }
 
 function removeSegment(segment: Segment) {
@@ -525,6 +814,10 @@ function updateSegmentName(segment: Segment, name: string) {
 
 function updateSegmentOffset(segment: Segment, offset: number) {
   segmentsStore.updateSegment(segment.id, { offset })
+}
+
+function updateSegmentPageOffset(segment: Segment, pageOffset: number) {
+  segmentsStore.updateSegment(segment.id, { pageOffset })
 }
 
 function updateSegmentTargetBinder(segment: Segment, binderId: string | undefined) {
@@ -653,7 +946,8 @@ function handleInsertCard(pageNumber: number, slotOnPage: number) {
     return
   }
 
-  insertTargetSlot.value = {
+  cardSearch.value = {
+    mode: 'insert',
     binderId: selectedBinderForView.value,
     pageNumber,
     slotOnPage,
@@ -662,23 +956,71 @@ function handleInsertCard(pageNumber: number, slotOnPage: number) {
     setCode: owningSegment.scryfallSetCode,
     insertBeforeCardId
   }
-  showCardSearch.value = true
+}
+
+// Open the (unfiltered) card search to append a card to a custom section.
+function handleSegmentAddCard(segment: Segment) {
+  cardSearch.value = {
+    mode: 'append',
+    segmentId: segment.id,
+    segmentName: segment.name,
+    setCode: segment.scryfallSetCode
+  }
+}
+
+// Multi-select cards into an existing segment. Set-backed segments jump straight
+// to that set's card picker; custom sections open the set selector first.
+async function handleSegmentAddCards(segment: Segment) {
+  let set: ScryfallSet | null = null
+  if (segment.scryfallSetCode) {
+    const sets = await fetchSets()
+    set = sets.find(s => s.code === segment.scryfallSetCode) ?? null
+  }
+  appendTarget.value = { segmentId: segment.id, set }
+}
+
+async function onAppendCardsConfirm({ cardIds }: { set: ScryfallSet; cardIds: string[] }) {
+  const target = appendTarget.value
+  if (!target || !currentPlanId.value) {
+    appendTarget.value = null
+    return
+  }
+
+  // Append to the end (fresh indices, so existing ownership keys are untouched);
+  // skip cards already in the segment so we don't create duplicates.
+  const existing = new Set(segmentsStore.getSegment(target.segmentId)?.cardIds ?? [])
+  const toAdd = cardIds.filter(id => !existing.has(id))
+  for (const id of toAdd) {
+    segmentsStore.insertCardInSegment(target.segmentId, id, null)
+  }
+
+  if (toAdd.length) {
+    void pricesStore.fetchPricesFor(toAdd)
+    if (planBinders.value.length > 0 && planSegments.value.length > 0) {
+      placementResult.value = await calculatePlacements(planSegments.value, planBinders.value)
+    }
+  }
+
+  appendTarget.value = null
 }
 
 async function handleCardSelected(card: ScryfallCard) {
-  if (!insertTargetSlot.value || !currentPlanId.value) {
-    showCardSearch.value = false
-    insertTargetSlot.value = null
+  const target = cardSearch.value
+  if (!target || !currentPlanId.value) {
+    cardSearch.value = null
     return
   }
 
   try {
-    // Insert the card into the existing segment
+    // 'insert' drops the card at a specific slot (before insertBeforeCardId);
+    // 'append' (null) adds it to the end of the segment's card list.
     segmentsStore.insertCardInSegment(
-      insertTargetSlot.value.segmentId,
+      target.segmentId,
       card.id,
-      insertTargetSlot.value.insertBeforeCardId
+      target.mode === 'insert' ? target.insertBeforeCardId : null
     )
+    // Grab this card's price right away.
+    void pricesStore.fetchPricesFor([card.id])
 
     // Recalculate placements
     if (planBinders.value.length > 0 && planSegments.value.length > 0) {
@@ -686,14 +1028,12 @@ async function handleCardSelected(card: ScryfallCard) {
     }
   } finally {
     // Always close modal and reset
-    showCardSearch.value = false
-    insertTargetSlot.value = null
+    cardSearch.value = null
   }
 }
 
 function cancelCardSearch() {
-  showCardSearch.value = false
-  insertTargetSlot.value = null
+  cardSearch.value = null
 }
 
 function viewBinder(binderId: string) {
@@ -727,6 +1067,45 @@ function handleKeyDown(event: KeyboardEvent) {
       editingPlanName.value = false
       event.preventDefault()
       return
+    }
+  }
+
+  // Foil-marking shortcuts while the card action sheet is open: N = non-foil,
+  // F = foil, B = both available finishes. Each applies and closes the sheet so you
+  // can click the next card and keep marking. Keys the printing can't be are ignored.
+  if (sheetOpen.value && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    const t = event.target as HTMLElement | null
+    const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+    const p = typing ? null : sheetPlacement.value
+    if (p) {
+      const key = getPlacementOwnershipKey(p)
+      const finishes = p.card.finishes
+      const canNon = finishes ? finishes.includes('nonfoil') : true
+      const canFoil = finishes ? finishes.includes('foil') : true
+      let handled = true
+      switch (event.key.toLowerCase()) {
+        case 'n':
+          if (!canNon) { handled = false; break }
+          if (isBoxView.value) setBoxFinish(key, 'nonfoil')
+          else collectionStore.toggleOwned(key)
+          break
+        case 'f':
+          if (!canFoil) { handled = false; break }
+          if (isBoxView.value) setBoxFinish(key, 'foil')
+          else collectionStore.toggleFoil(key)
+          break
+        case 'b':
+          // No "both" in a box: a physical card is a single finish.
+          if (isBoxView.value) { handled = false; break }
+          if (canNon) collectionStore.setOwned(key, true)
+          if (canFoil) collectionStore.setFoilOwned(key, true)
+          break
+        default: handled = false
+      }
+      if (handled) {
+        event.preventDefault()
+        sheetOpen.value = false
+      }
     }
   }
   // Page-turn arrows/space are owned by BinderSpread now.
@@ -784,7 +1163,10 @@ onUnmounted(() => {
             <ArrowLeft :size="18" />
           </Button>
         </div>
-        <Button class="w-full" @click="createNewPlan"><Plus :size="18" /> New Set</Button>
+        <div class="flex gap-2">
+          <Button class="flex-1" @click="createNewPlan"><Plus :size="18" /> New Set</Button>
+          <Button variant="outline" title="Import a ManaBox CSV export" @click="showImportDialog = true"><Upload :size="16" /> Import</Button>
+        </div>
         <div class="flex flex-col gap-1">
           <button
             v-for="plan in sortedPlans"
@@ -795,10 +1177,13 @@ onUnmounted(() => {
               : 'border-line text-ink-soft hover:bg-surface-2 hover:text-foreground'"
             @click="selectPlan(plan)"
           >
-            <span class="absolute inset-y-0 left-0 bg-(--accent-soft)" :style="{ width: `${planOwnedPercentage.get(plan.id) ?? 0}%` }" aria-hidden="true"></span>
+            <span v-if="!planIsBoxOnly.get(plan.id)" class="absolute inset-y-0 left-0 bg-(--accent-soft)" :style="{ width: `${planCompletion.get(plan.id)?.percent ?? 0}%` }" aria-hidden="true"></span>
             <span class="relative flex items-center justify-between gap-2">
               <span class="truncate">{{ plan.name }}</span>
-              <span class="shrink-0 text-xs text-ink-faint tabular-nums">{{ planOwnedPercentage.get(plan.id) ?? 0 }}%</span>
+              <span class="shrink-0 text-xs text-ink-faint tabular-nums">
+                <template v-if="planIsBoxOnly.get(plan.id)">{{ planCompletion.get(plan.id)?.owned ?? 0 }}</template>
+                <template v-else>{{ planCompletion.get(plan.id)?.percent ?? 0 }}%</template>
+              </span>
             </span>
           </button>
         </div>
@@ -850,6 +1235,7 @@ onUnmounted(() => {
               :binder="binder"
               :planned-cards="cardsPerBinder.get(binder.id)"
               :owned-cards="ownedCardsPerBinder.get(binder.id) ?? 0"
+              :value="binderValues.get(binder.id)"
               :selected="binder.id === selectedBinderForView"
               @edit="editBinder"
               @remove="removeBinder"
@@ -868,9 +1254,15 @@ onUnmounted(() => {
         <section v-if="hasStorage && (!viewingBinder || viewingBinder.type !== 'box')" class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
             <h2 class="font-display text-sm font-semibold uppercase tracking-[0.08em] text-ink-soft">Segments</h2>
-            <Button variant="ghost" size="icon" class="h-8 w-8" title="Add segment" aria-label="Add segment" @click="addCardsMode = 'segment'">
-              <Plus :size="18" />
-            </Button>
+            <DropdownMenu>
+              <template #trigger>
+                <Button variant="ghost" size="icon" class="h-8 w-8" title="Add segment" aria-label="Add segment">
+                  <Plus :size="18" />
+                </Button>
+              </template>
+              <DropdownMenuItem @select="addCardsMode = 'segment'"><Plus :size="15" /> Add set's cards</DropdownMenuItem>
+              <DropdownMenuItem @select="addCustomSection"><Plus :size="15" /> Add custom section</DropdownMenuItem>
+            </DropdownMenu>
           </div>
           <div v-if="planSegments.length" class="flex flex-col gap-2">
             <SegmentCard
@@ -882,10 +1274,13 @@ onUnmounted(() => {
               @update-name="updateSegmentName"
               @remove="removeSegment"
               @update-offset="updateSegmentOffset"
+              @update-page-offset="updateSegmentPageOffset"
               @update-target-binder="updateSegmentTargetBinder"
               @navigate="handleSegmentNavigate"
               @move-up="moveSegmentUp"
               @move-down="moveSegmentDown"
+              @add-card="handleSegmentAddCard"
+              @add-cards="handleSegmentAddCards"
             />
           </div>
           <button
@@ -930,27 +1325,70 @@ onUnmounted(() => {
 
         <!-- Sets exist, show overview -->
         <div v-else class="mx-auto max-w-6xl">
-          <h2 class="font-display text-2xl font-bold tracking-tight">Your Sets</h2>
-          <p class="mt-1 text-ink-soft">Click a set to view and manage your collection.</p>
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 class="font-display text-2xl font-bold tracking-tight">Your Sets</h2>
+              <p class="mt-1 text-ink-soft">Click a set to view and manage your collection.</p>
+            </div>
+            <SegmentedControl v-model="storageFilter" :options="storageFilterOptions" />
+          </div>
 
-          <div class="mt-6 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+          <!-- Combined owned value + cost-to-complete across every set -->
+          <div class="mt-6 flex flex-wrap items-end justify-between gap-x-8 gap-y-3 rounded-xl border border-line bg-surface p-5 shadow-(--shadow-1)">
+            <div class="flex flex-wrap items-end gap-x-8 gap-y-3">
+              <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase tracking-[0.08em] text-ink-soft">Total collection value</p>
+                <p v-if="allSetsValue.pricedCount > 0" class="mt-1 font-display text-3xl font-bold tabular-nums text-brand">{{ formatEurAmount(allSetsValue.value) }}</p>
+                <p v-else class="mt-1 text-sm text-ink-faint">Fetch prices in a binder to start valuing your collection.</p>
+              </div>
+              <div v-if="allSetsValue.missingPricedCount > 0" class="min-w-0" :title="missingCoverageLabel(allSetsValue) ?? undefined">
+                <p class="text-xs font-semibold uppercase tracking-[0.08em] text-ink-soft">Cost to complete</p>
+                <p class="mt-1 font-display text-2xl font-bold tabular-nums text-ink-faint">{{ formatEurAmount(allSetsValue.missingValue) }}</p>
+              </div>
+            </div>
+            <div class="flex shrink-0 flex-col items-end gap-2">
+              <Button size="sm" :disabled="pricesStore.isFetching || allSetCardIds.length === 0" @click="fetchAllPrices">
+                <Coins :size="16" />
+                <template v-if="pricesStore.isFetching && pricesStore.fetchProgress">
+                  Fetching {{ pricesStore.fetchProgress.done }}/{{ pricesStore.fetchProgress.total }}…
+                </template>
+                <template v-else>Fetch all prices</template>
+              </Button>
+              <p v-if="allSetsValue.pricedCount > 0" class="text-xs text-ink-faint tabular-nums">
+                {{ allSetsValue.pricedCount }} priced · {{ allSetsValue.ownedCount }} owned
+              </p>
+            </div>
+          </div>
+
+          <p v-if="filteredPlans.length === 0" class="mt-6 rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-ink-faint">
+            No sets with {{ storageFilter === 'binders' ? 'binders' : 'storage boxes' }} yet.
+          </p>
+          <div v-else class="mt-6 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
             <div
-              v-for="plan in sortedPlans"
+              v-for="plan in filteredPlans"
               :key="plan.id"
               class="cursor-pointer rounded-xl border border-line bg-surface p-4 shadow-(--shadow-1) transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-(--shadow-2)"
               @click="selectPlan(plan)"
             >
               <div class="flex items-start justify-between gap-3">
                 <h3 class="min-w-0 truncate font-semibold">{{ plan.name }}</h3>
-                <span class="shrink-0 text-xs text-ink-faint tabular-nums">{{ planOwnedPercentage.get(plan.id) ?? 0 }}% complete</span>
+                <span class="shrink-0 text-xs text-ink-faint tabular-nums">
+                  <template v-if="planIsBoxOnly.get(plan.id)">{{ planCompletion.get(plan.id)?.owned ?? 0 }} owned</template>
+                  <template v-else>{{ planCompletion.get(plan.id)?.percent ?? 0 }}% complete</template>
+                </span>
+              </div>
+
+              <div v-if="planValueLabel(plan.id) || planMissingLabel(plan.id)" class="mt-1 flex items-baseline gap-2 tabular-nums">
+                <span v-if="planValueLabel(plan.id)" class="text-lg font-bold text-brand" :title="planValueTitle(plan.id) ?? undefined">{{ planValueLabel(plan.id) }}</span>
+                <span v-if="planMissingLabel(plan.id)" class="text-sm font-semibold text-ink-faint" :title="planMissingTitle(plan.id) ?? undefined">{{ planMissingLabel(plan.id) }}</span>
               </div>
 
               <div class="mt-2 text-sm text-ink-soft tabular-nums">
                 Segments: {{ plan.segmentIds.length }}
               </div>
 
-              <div class="mt-2 h-2 overflow-hidden rounded-full bg-surface-2">
-                <div class="h-full rounded-full" :style="{ width: `${planOwnedPercentage.get(plan.id) ?? 0}%`, background: 'var(--accent-grad)' }"></div>
+              <div v-if="!planIsBoxOnly.get(plan.id)" class="mt-2 h-2 overflow-hidden rounded-full bg-surface-2">
+                <div class="h-full rounded-full" :style="{ width: `${planCompletion.get(plan.id)?.percent ?? 0}%`, background: 'var(--accent-grad)' }"></div>
               </div>
 
               <div v-if="plan.binderIds.length > 0" class="mt-4">
@@ -962,6 +1400,7 @@ onUnmounted(() => {
                     :binder="binder"
                     :planned-cards="allPlansBinderStats.get(binder.id)?.planned"
                     :owned-cards="allPlansBinderStats.get(binder.id)?.owned ?? 0"
+                    :value="allPlansBinderValues.get(binder.id)"
                     :show-actions="false"
                     @click.stop="selectPlan(plan); viewBinder(binder.id)"
                   />
@@ -974,6 +1413,14 @@ onUnmounted(() => {
 
       <template v-else-if="viewingBinder">
         <div class="flex h-[calc(100dvh-6rem)] flex-col gap-3">
+          <!-- switch between the card viewer and the set's stats/search view -->
+          <div class="flex shrink-0 items-center">
+            <SegmentedControl v-model="mainView" :options="mainViewOptions" />
+          </div>
+
+          <SetStats v-if="mainView === 'stats'" :placements="planPlacements" :binders="planBinders" class="min-h-0 flex-1" />
+
+          <template v-else>
           <!-- slim header: storage picker + bulk/box action -->
           <div class="flex shrink-0 flex-wrap items-center gap-3">
             <label class="flex items-center gap-2 text-sm">
@@ -987,6 +1434,24 @@ onUnmounted(() => {
               </div>
             </label>
             <div class="flex-1"></div>
+            <Button
+              size="sm"
+              variant="secondary"
+              :disabled="pricesStore.isFetching || visibleCardIds.length === 0"
+              @click="fetchVisiblePrices"
+            >
+              <Coins :size="16" /> {{ pricesStore.isFetching ? 'Fetching…' : 'Fetch prices' }}
+            </Button>
+            <label v-if="viewingBinder.type === 'box'" class="flex items-center gap-2 text-sm">
+              <span class="shrink-0 text-ink-soft">Sort</span>
+              <div class="w-36">
+                <Select v-model="boxSortMode">
+                  <option value="added">Added order</option>
+                  <option value="name">Name</option>
+                  <option value="number">Number</option>
+                </Select>
+              </div>
+            </label>
             <CardSizeControl
               v-if="viewingBinder.type === 'box'"
               v-model="boxCardSize"
@@ -1020,6 +1485,7 @@ onUnmounted(() => {
               :slots-per-page="viewingBinder.slotsPerPage"
               :pages="viewingBinderPages"
               :cover-image="viewingBinderCover ?? undefined"
+              :inside-color="viewingBinder.insideColor"
               :initial-page="selectedPage"
               :paused="anyModalOpen"
               :has-prev-binder="hasPrevBinderView"
@@ -1027,6 +1493,7 @@ onUnmounted(() => {
               @select="onBinderSlotSelect"
               @insert="onBinderSlotInsert"
               @quick-own="onBinderQuickOwn"
+              @quick-foil="onBinderQuickFoil"
               @edge="onBinderEdge"
               @view-change="visiblePages = $event"
               @mark-page-owned="onMarkPageOwned"
@@ -1038,8 +1505,9 @@ onUnmounted(() => {
             <div v-if="boxItems.length === 0" class="p-4 text-sm text-ink-soft">
               This box is empty. Use "Add cards" above to add cards from a set.
             </div>
-            <BoxView v-else :items="boxItems" :tile-size="boxCardSize" @select="onBoxSlotSelect" @toggle-owned="onBoxQuickOwn" />
+            <BoxView v-else :items="boxItems" :tile-size="boxCardSize" @select="onBoxSlotSelect" @toggle-owned="onBoxQuickOwn" @toggle-foil="onBoxQuickFoil" />
           </div>
+          </template>
         </div>
       </template>
 
@@ -1069,9 +1537,10 @@ onUnmounted(() => {
     </main>
 
     <CardSearchModal
-      v-if="showCardSearch && insertTargetSlot"
-      :set-code="insertTargetSlot.setCode"
-      :segment-name="insertTargetSlot.segmentName"
+      v-if="cardSearch"
+      :set-code="cardSearch.setCode"
+      :segment-name="cardSearch.segmentName"
+      :title="cardSearch.mode === 'append' ? 'Add card' : 'Insert card'"
       @select="handleCardSelected"
       @cancel="cancelCardSearch"
     />
@@ -1080,6 +1549,12 @@ onUnmounted(() => {
       v-if="showNewSetDialog"
       @submit="handleNewSetSubmit"
       @cancel="handleNewSetCancel"
+    />
+
+    <ImportSetDialog
+      v-if="showImportDialog"
+      @submit="handleImportSubmit"
+      @cancel="showImportDialog = false"
     />
 
     <StorageDialog
@@ -1093,6 +1568,13 @@ onUnmounted(() => {
       v-if="addCardsMode"
       @confirm="onAddCardsConfirm"
       @cancel="addCardsMode = null"
+    />
+
+    <AddCardsDialog
+      v-if="appendTarget"
+      :initial-set="appendTarget.set ?? undefined"
+      @confirm="onAppendCardsConfirm"
+      @cancel="appendTarget = null"
     />
 
     <Dialog v-if="currentPlan" v-model:open="showDeleteConfirm" title="Delete this set?">
@@ -1117,11 +1599,27 @@ onUnmounted(() => {
       :rarity="sheetCard.rarity"
       :image="sheetCard.image"
       :location="sheetCard.location"
-      @toggle-owned="onSheetToggleOwned"
+      :eur="sheetCard.eur"
+      :eur-foil="sheetCard.eurFoil"
+      :price-fetched-at="sheetCard.priceFetchedAt"
+      :owns-non-foil="sheetCard.ownsNonFoil"
+      :owns-foil="sheetCard.ownsFoil"
+      :can-non-foil="sheetCard.canNonFoil"
+      :can-foil="sheetCard.canFoil"
+      :single-finish="isBoxView"
+      :is-double-faced="sheetCard.isDoubleFaced"
+      :is-back-face="sheetCard.isBackFace"
+      :is-refreshing="isRefreshingCard"
+      @toggle-non-foil="onSheetToggleNonFoil"
+      @toggle-foil="onSheetToggleFoil"
       @toggle-skipped="onSheetToggleSkipped"
+      @add-back-face="onSheetAddBackFace"
       @add-spacer="onSheetAddSpacer"
       @remove-spacer="onSheetRemoveSpacer"
+      @open-details="onSheetDetails"
       @open-scryfall="onSheetScryfall"
+      @open-cardmarket="onSheetCardmarket"
+      @refresh="onSheetRefresh"
       @remove="onSheetRemove"
     />
   </div>

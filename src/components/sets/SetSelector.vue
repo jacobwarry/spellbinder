@@ -3,7 +3,9 @@ import { ref, computed, onMounted } from 'vue'
 import type { ScryfallSet } from '@/types'
 import { fetchSets } from '@/api/scryfall'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import { RefreshCw } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   select: [set: ScryfallSet]
@@ -11,6 +13,7 @@ const emit = defineEmits<{
 
 const sets = ref<ScryfallSet[]>([])
 const loading = ref(true)
+const refreshing = ref(false)
 const error = ref<string | null>(null)
 const searchQuery = ref('')
 
@@ -27,9 +30,10 @@ const filteredSets = computed(() => {
     .slice(0, 50)
 })
 
-onMounted(async () => {
+async function loadSets(force = false) {
+  error.value = null
   try {
-    sets.value = await fetchSets()
+    sets.value = await fetchSets(force)
     sets.value.sort((a, b) => {
       const dateA = new Date(a.released_at).getTime()
       const dateB = new Date(b.released_at).getTime()
@@ -37,15 +41,37 @@ onMounted(async () => {
     })
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load sets'
-  } finally {
-    loading.value = false
   }
+}
+
+onMounted(async () => {
+  await loadSets()
+  loading.value = false
 })
+
+async function refreshSets() {
+  if (refreshing.value) return
+  refreshing.value = true
+  await loadSets(true)
+  refreshing.value = false
+}
 </script>
 
 <template>
   <div class="flex flex-col gap-2">
-    <Input v-model="searchQuery" placeholder="Search sets…" />
+    <div class="flex items-center gap-2">
+      <Input v-model="searchQuery" placeholder="Search sets…" class="flex-1" />
+      <Button
+        variant="outline"
+        size="icon"
+        :disabled="refreshing"
+        aria-label="Refresh set list"
+        title="Refresh set list"
+        @click="refreshSets"
+      >
+        <RefreshCw :size="16" :class="{ 'animate-spin': refreshing }" />
+      </Button>
+    </div>
 
     <div v-if="loading" class="flex justify-center py-10"><LoadingSpinner label="Loading sets…" /></div>
     <div v-else-if="error" class="py-4 text-center text-skipped">{{ error }}</div>

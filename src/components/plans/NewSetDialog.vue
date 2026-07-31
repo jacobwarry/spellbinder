@@ -7,7 +7,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { X } from 'lucide-vue-next'
+import { X, RefreshCw } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   submit: [data: { name: string; binderId?: string; segmentId?: string }]
@@ -29,6 +29,7 @@ const isSubmitting = ref(false)
 
 const allSets = ref<ScryfallSet[]>([])
 const setsLoading = ref(true)
+const setsRefreshing = ref(false)
 const setsError = ref<string | null>(null)
 const setSearchQuery = ref('')
 
@@ -70,9 +71,10 @@ function handleSetSelected(set: ScryfallSet) {
   selectedSet.value = set
 }
 
-onMounted(async () => {
+async function loadSets(force = false) {
+  setsError.value = null
   try {
-    allSets.value = await fetchSets()
+    allSets.value = await fetchSets(force)
     allSets.value.sort((a, b) => {
       const dateA = new Date(a.released_at).getTime()
       const dateB = new Date(b.released_at).getTime()
@@ -80,10 +82,20 @@ onMounted(async () => {
     })
   } catch (e) {
     setsError.value = e instanceof Error ? e.message : 'Failed to load sets'
-  } finally {
-    setsLoading.value = false
   }
+}
+
+onMounted(async () => {
+  await loadSets()
+  setsLoading.value = false
 })
+
+async function refreshSets() {
+  if (setsRefreshing.value) return
+  setsRefreshing.value = true
+  await loadSets(true)
+  setsRefreshing.value = false
+}
 
 async function handleSubmit() {
   if (!isValid.value || isSubmitting.value) return
@@ -177,7 +189,19 @@ async function handleSubmit() {
         </label>
 
         <div v-if="shouldAddSegment" class="ml-1 flex flex-col gap-2 border-l-2 border-line pl-4">
-          <Input v-model="setSearchQuery" placeholder="Search for a set…" />
+          <div class="flex items-center gap-2">
+            <Input v-model="setSearchQuery" placeholder="Search for a set…" class="flex-1" />
+            <Button
+              variant="outline"
+              size="icon"
+              :disabled="setsRefreshing"
+              aria-label="Refresh set list"
+              title="Refresh set list"
+              @click="refreshSets"
+            >
+              <RefreshCw :size="16" :class="{ 'animate-spin': setsRefreshing }" />
+            </Button>
+          </div>
 
           <p v-if="setsLoading" class="py-2 text-center text-sm text-ink-soft">Loading sets…</p>
           <p v-else-if="setsError" class="py-2 text-center text-sm text-skipped">{{ setsError }}</p>
