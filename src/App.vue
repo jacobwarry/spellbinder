@@ -2,13 +2,14 @@
 import { useRoute } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/composables/useTheme'
-import { Search, Library, Layers, Sun, Moon } from 'lucide-vue-next'
+import { Search, LayoutDashboard, Library, Layers, Sun, Moon, Settings } from 'lucide-vue-next'
 
 const route = useRoute()
 const { theme, toggleTheme } = useTheme()
 
 const nav = [
-  { to: '/', label: 'Collection', icon: Search, match: (p: string) => p === '/' },
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard, match: (p: string) => p === '/' },
+  { to: '/collection', label: 'Collection', icon: Search, match: (p: string) => p.startsWith('/collection') },
   { to: '/sets', label: 'Sets', icon: Library, match: (p: string) => p.startsWith('/sets') },
   { to: '/decks', label: 'Decks', icon: Layers, match: (p: string) => p.startsWith('/decks') }
 ]
@@ -58,6 +59,16 @@ const isActive = (m: (p: string) => boolean) => m(route.path)
             ></span>
           </RouterLink>
         </nav>
+
+        <RouterLink
+          to="/config"
+          aria-label="Control panel"
+          :aria-current="route.path.startsWith('/config') ? 'page' : undefined"
+          class="ml-1 grid h-11 w-11 place-items-center rounded-md border bg-secondary text-secondary-foreground transition-colors hover:border-brand"
+          :class="route.path.startsWith('/config') ? 'border-brand text-brand' : 'border-line-strong'"
+        >
+          <Settings :size="18" />
+        </RouterLink>
 
         <Button
           variant="secondary"
