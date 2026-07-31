@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDecksStore, useSegmentsStore, useCollectionStore } from '@/stores'
-import { getCachedCards, searchCards } from '@/api/scryfall'
+import { getCachedCards, fetchAndCacheCards, searchCards } from '@/api/scryfall'
 import { fetchArchidektDeck, extractDeckId, convertArchidektCards } from '@/api/archidekt'
 import type { Deck, ScryfallCard } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -10,15 +10,16 @@ import { Input } from '@/components/ui/input'
 import { Dialog } from '@/components/ui/dialog'
 import { SegmentedControl } from '@/components/ui/segmented'
 import CardSizeControl from '@/components/common/CardSizeControl.vue'
+import DeckPromptDialog from '@/components/decks/DeckPromptDialog.vue'
 import { useCardSize } from '@/composables/useCardSize'
-import { Layers, Download, Trash2, ArrowLeft, Check, ImageIcon, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Layers, Download, Trash2, ArrowLeft, Check, ImageIcon, ChevronLeft, ChevronRight, FileText, Sparkles } from 'lucide-vue-next'
 
+/** A linkable copy from the collection. Only owned copies are ever built into one. */
 interface CollectionMatch {
   card: ScryfallCard
   segmentId: string
   segmentName: string
   cardIndex: number
-  isOwned: boolean
   cardKey: string
 }
 
@@ -210,6 +211,22 @@ async function loadCollectionCards() {
   }
 }
 
+// ---- "Build with Claude": hand the owned pool to a prompt the user pastes into Claude.
+const showDeckPrompt = ref(false)
+
+const ownedCards = computed(() => {
+  const cards: ScryfallCard[] = []
+  for (const [key, entry] of allCollectionCards.value) {
+    if (collectionStore.isOwned(key)) cards.push(entry.card)
+  }
+  return cards
+})
+
+async function openDeckPrompt() {
+  await loadCollectionCards()
+  showDeckPrompt.value = true
+}
+
 // Capitalize the first letter (e.g. Scryfall rarity "rare" → "Rare")
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1)
@@ -267,6 +284,9 @@ async function openCardSearch(card: Deck['cards'][0]) {
   for (const [key, data] of allCollectionCards.value) {
     // Skip art cards
     if (isArtCard(data.card)) continue
+    // Only copies actually marked owned are linkable — a tracked-but-unowned slot
+    // is a card you don't have, so it can't back a deck slot.
+    if (!collectionStore.isOwned(key)) continue
 
     if (cardNamesMatch(card.name, data.card.name)) {
       matches.push({
@@ -274,17 +294,12 @@ async function openCardSearch(card: Deck['cards'][0]) {
         segmentId: data.segmentId,
         segmentName: data.segmentName,
         cardIndex: data.cardIndex,
-        isOwned: collectionStore.isOwned(key),
         cardKey: key
       })
     }
   }
 
-  // Sort: owned first, then by set name
-  matches.sort((a, b) => {
-    if (a.isOwned !== b.isOwned) return a.isOwned ? -1 : 1
-    return (a.card.set_name || '').localeCompare(b.card.set_name || '')
-  })
+  matches.sort((a, b) => (a.card.set_name || '').localeCompare(b.card.set_name || ''))
 
   collectionMatches.value = matches
   isSearchingCollection.value = false
@@ -303,6 +318,8 @@ function searchCollectionCards() {
   for (const [key, data] of allCollectionCards.value) {
     // Skip art cards
     if (isArtCard(data.card)) continue
+    // Owned copies only — see openCardSearch.
+    if (!collectionStore.isOwned(key)) continue
 
     const cardName = data.card.name.toLowerCase()
     if (cardName.includes(query)) {
@@ -311,15 +328,13 @@ function searchCollectionCards() {
         segmentId: data.segmentId,
         segmentName: data.segmentName,
         cardIndex: data.cardIndex,
-        isOwned: collectionStore.isOwned(key),
         cardKey: key
       })
     }
   }
 
-  // Sort: owned first, then by card name, then by set name
+  // Sort by card name, then by set name
   matches.sort((a, b) => {
-    if (a.isOwned !== b.isOwned) return a.isOwned ? -1 : 1
     const nameCompare = a.card.name.localeCompare(b.card.name)
     if (nameCompare !== 0) return nameCompare
     return (a.card.set_name || '').localeCompare(b.card.set_name || '')
@@ -381,6 +396,11 @@ async function importDeck() {
       deckId,
       importUrl.value.includes('archidekt.com') ? importUrl.value : undefined
     )
+
+    // Resolve the imported deck's card data now (this is the user-initiated import), so the
+    // deck view reads it straight from cache later without any automatic Scryfall fetch.
+    const scryfallIds = [...new Set(cards.map(c => c.scryfallId).filter(Boolean))]
+    await fetchAndCacheCards(scryfallIds)
 
     showImportModal.value = false
     importUrl.value = ''
@@ -458,7 +478,8 @@ function getDeckCoverCards(deck: Deck): Deck['cards'] {
 
 function getCoverImage(card: Deck['cards'][0]): string | undefined {
   const c = listCoverData.value.get(card.scryfallId)
-  return c?.image_uris?.small || c?.card_faces?.[0]?.image_uris?.small
+  const uris = c?.image_uris ?? c?.card_faces?.[0]?.image_uris
+  return uris?.normal || uris?.small
 }
 
 async function loadListCovers() {
@@ -585,9 +606,14 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
     <header class="flex shrink-0 items-center justify-between gap-4 border-b border-line bg-surface px-6 py-4">
       <template v-if="!selectedDeck">
         <h1 class="font-display text-xl font-bold tracking-tight">My Decks</h1>
-        <Button @click="showImportModal = true">
-          <Download :size="18" /> Import from Archidekt
-        </Button>
+        <div class="flex items-center gap-2">
+          <Button variant="ghost" @click="openDeckPrompt">
+            <Sparkles :size="18" /> Build with Claude
+          </Button>
+          <Button @click="showImportModal = true">
+            <Download :size="18" /> Import from Archidekt
+          </Button>
+        </div>
       </template>
       <template v-else>
         <div class="flex min-w-0 items-center gap-3">
@@ -603,7 +629,7 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
 
     <!-- Deck List View -->
     <main v-if="!selectedDeck" class="main-content">
-      <div v-if="decksStore.decks.length === 0" class="mx-auto max-w-md py-20 text-center">
+      <div v-if="decksStore.decks.length === 0" class="mx-auto max-w-md px-6 py-20 text-center">
         <div class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-(--accent-soft) text-brand">
           <Layers :size="26" />
         </div>
@@ -614,61 +640,68 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
         </Button>
       </div>
 
-      <div v-else class="mx-auto flex max-w-3xl flex-col gap-3">
+      <!-- Grid of deck tiles — same portrait-cover-over-metadata shape as the collection results, capped at 4 columns -->
+      <div v-else class="mx-auto grid w-full max-w-6xl grid-cols-2 gap-4 px-6 sm:grid-cols-3 sm:px-8 lg:grid-cols-4">
         <div
           v-for="deck in decksStore.decks"
           :key="deck.id"
-          class="group flex cursor-pointer items-center gap-4 rounded-xl border border-line bg-surface p-4 shadow-(--shadow-1) transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-(--shadow-2)"
+          class="group relative cursor-pointer overflow-hidden rounded-md border border-line bg-surface shadow-(--shadow-1) outline-none transition duration-200 hover:-translate-y-1 hover:shadow-(--shadow-2) focus-visible:ring-2 focus-visible:ring-ring"
           role="button"
           tabindex="0"
+          :aria-label="`Open ${deck.name}`"
           @click="selectDeck(deck)"
-          @keydown.enter="selectDeck(deck)"
+          @keydown.enter.prevent="selectDeck(deck)"
+          @keydown.space.prevent="selectDeck(deck)"
         >
-          <!-- Commander thumbnail(s) — fanned for partner decks, first card as fallback -->
-          <div class="flex shrink-0 items-center">
+          <!-- Commander cover — split 50/50 for partner decks, first card as fallback -->
+          <div class="relative flex aspect-63/88 gap-px bg-line">
             <template v-if="getDeckCoverCards(deck).length">
               <div
-                v-for="(cc, i) in getDeckCoverCards(deck)"
+                v-for="cc in getDeckCoverCards(deck).slice(0, 2)"
                 :key="cc.id"
-                class="grid h-21 w-15 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-surface-2 shadow-(--shadow-1)"
-                :class="i > 0 && '-ml-9'"
-                :style="{ zIndex: getDeckCoverCards(deck).length - i }"
+                class="relative grid flex-1 place-items-center overflow-hidden bg-surface-2"
               >
-                <img v-if="getCoverImage(cc)" :src="getCoverImage(cc)" :alt="cc.name" loading="lazy" class="h-full w-full object-cover" />
-                <ImageIcon v-else :size="18" class="text-ink-faint" aria-hidden="true" />
+                <img v-if="getCoverImage(cc)" :src="getCoverImage(cc)" :alt="cc.name" loading="lazy" class="absolute inset-0 h-full w-full object-cover" />
+                <ImageIcon v-else :size="22" class="text-ink-faint" aria-hidden="true" />
               </div>
             </template>
-            <div v-else class="grid h-21 w-15 shrink-0 place-items-center rounded-md border border-line bg-surface-2">
-              <ImageIcon :size="18" class="text-ink-faint" aria-hidden="true" />
+            <div v-else class="grid flex-1 place-items-center bg-surface-2">
+              <ImageIcon :size="22" class="text-ink-faint" aria-hidden="true" />
             </div>
           </div>
-          <div class="min-w-0 flex-1">
-            <h3 class="truncate font-semibold">{{ deck.name }}</h3>
-            <p class="text-sm text-ink-faint tabular-nums">{{ deck.cards.length }} unique cards</p>
-          </div>
-          <div class="flex w-40 shrink-0 flex-col gap-1">
-            <div class="h-2 overflow-hidden rounded-full bg-surface-2">
-              <div class="h-full rounded-full" :style="{ width: getDeckCompletion(deck).percentage + '%', background: 'var(--accent-grad)' }"></div>
-            </div>
-            <span class="text-xs text-ink-soft tabular-nums">
-              {{ getDeckCompletion(deck).owned }}/{{ getDeckCompletion(deck).total }} ({{ getDeckCompletion(deck).percentage }}%)
-            </span>
-          </div>
+
+          <!-- Delete — overlay top-right, revealed on hover/focus -->
           <button
-            class="grid h-9 w-9 shrink-0 place-items-center rounded-md text-ink-faint outline-none transition-colors hover:bg-(--skipped-soft) hover:text-skipped focus-visible:ring-2 focus-visible:ring-ring"
+            class="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-md bg-[color-mix(in_srgb,var(--bg)_70%,transparent)] text-ink-soft opacity-0 backdrop-blur-sm outline-none transition-opacity hover:text-skipped focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 pointer-coarse:opacity-100"
             title="Delete deck"
             aria-label="Delete deck"
             @click.stop="deleteDeck(deck)"
+            @keydown.enter.stop
+            @keydown.space.stop
           >
-            <Trash2 :size="16" />
+            <Trash2 :size="15" />
           </button>
+
+          <!-- Metadata -->
+          <div class="p-3">
+            <div class="line-clamp-2 min-h-10 text-sm font-semibold leading-tight">{{ deck.name }}</div>
+            <div class="mt-1 text-[11px] font-medium text-ink-faint tabular-nums">{{ deck.cards.length }} cards</div>
+            <div class="mt-2.5 flex flex-col gap-1">
+              <div class="h-1.5 overflow-hidden rounded-full bg-surface-2">
+                <div class="h-full rounded-full" :style="{ width: getDeckCompletion(deck).percentage + '%', background: 'var(--accent-grad)' }"></div>
+              </div>
+              <span class="text-[11px] text-ink-soft tabular-nums">
+                {{ getDeckCompletion(deck).owned }}/{{ getDeckCompletion(deck).total }} ({{ getDeckCompletion(deck).percentage }}%)
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </main>
 
     <!-- Deck Detail View -->
     <main v-else class="main-content">
-      <div class="mx-auto max-w-6xl">
+      <div class="mx-auto w-full max-w-6xl px-6 sm:px-8">
         <div class="mb-5 flex items-center justify-end">
           <CardSizeControl v-model="deckCardMin" :min="110" :max="240" :step="10" />
         </div>
@@ -734,7 +767,7 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
       v-model:open="showSearchModal"
       size="2xl"
       :title="searchMode === 'scryfall' ? `All printings of “${searchingCard.name}”` : (searchMode === 'same' ? `Find “${searchingCard.name}”` : 'Replace with any card')"
-      :description="searchMode === 'scryfall' ? 'Browse every printing to compare the art and find the set you want.' : (searchMode === 'same' ? 'Pick a copy from your collection to link to this slot.' : 'Search your collection for a replacement card.')"
+      :description="searchMode === 'scryfall' ? 'Browse every printing to compare the art and find the set you want.' : (searchMode === 'same' ? 'Pick an owned copy to link to this slot.' : 'Search your owned cards for a replacement.')"
     >
       <!-- Fixed-height column so the dialog dimensions stay constant across tabs; only the results scroll -->
       <div class="relative flex h-[60vh] flex-col">
@@ -755,7 +788,7 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
 
         <!-- In-collection (same card) — 3-up grid; card name is in the dialog header -->
         <template v-else-if="searchMode === 'same'">
-          <p v-if="collectionMatches.length === 0" class="py-8 text-center text-ink-soft">No copies of this card found in your collection.</p>
+          <p v-if="collectionMatches.length === 0" class="py-8 text-center text-ink-soft">No owned copies of this card in your collection.</p>
           <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <button
               v-for="(match, index) in collectionMatches"
@@ -767,7 +800,6 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
               <div class="flex min-w-0 flex-1 flex-col gap-1">
                 <div class="font-semibold leading-snug">{{ match.card.set_name }}</div>
                 <div class="text-xs text-ink-faint tabular-nums">{{ match.card.set.toUpperCase() }} · #{{ match.card.collector_number }}</div>
-                <span class="mt-auto inline-flex w-fit items-center rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold" :style="match.isOwned ? 'color:var(--owned);background:var(--owned-soft)' : 'color:var(--missing)'">{{ match.isOwned ? 'Owned' : 'Not owned' }}</span>
               </div>
             </button>
           </div>
@@ -775,8 +807,8 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
 
         <!-- Any owned card -->
         <template v-else-if="searchMode === 'any'">
-          <p v-if="replaceSearchQuery.length < 2" class="py-8 text-center text-ink-soft">Enter a card name to search your collection.</p>
-          <p v-else-if="replaceSearchResults.length === 0" class="py-8 text-center text-ink-soft">No cards found matching “{{ replaceSearchQuery }}”.</p>
+          <p v-if="replaceSearchQuery.length < 2" class="py-8 text-center text-ink-soft">Enter a card name to search your owned cards.</p>
+          <p v-else-if="replaceSearchResults.length === 0" class="py-8 text-center text-ink-soft">No owned cards found matching “{{ replaceSearchQuery }}”.</p>
           <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <button
               v-for="(match, index) in replaceSearchResults"
@@ -789,7 +821,6 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
                 <div class="font-semibold leading-snug">{{ match.card.name }}</div>
                 <div class="text-sm text-ink-soft">{{ match.card.set_name }}</div>
                 <div class="text-xs text-ink-faint tabular-nums">{{ match.card.set.toUpperCase() }} · #{{ match.card.collector_number }}</div>
-                <span class="mt-auto inline-flex w-fit items-center rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold" :style="match.isOwned ? 'color:var(--owned);background:var(--owned-soft)' : 'color:var(--missing)'">{{ match.isOwned ? 'Owned' : 'Not owned' }}</span>
               </div>
             </button>
             <p v-if="replaceSearchResults.length >= 50" class="col-span-full py-2 text-center text-xs text-ink-faint">Showing first 50 results — refine your search for more.</p>
@@ -850,14 +881,24 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
           <div v-if="previewItems.length > 1" class="mt-1 text-xs text-ink-faint tabular-nums">{{ (previewIndex ?? 0) + 1 }} / {{ previewItems.length }}</div>
         </div>
 
-        <!-- Collection tabs only: commit this card and close the dialog -->
-        <Button
-          v-if="previewItem?.cardKey"
-          class="shrink-0"
-          @click.stop="linkCardToCollection(searchingCard!.id, previewItem!.cardKey!)"
-        >
-          <Check :size="16" /> Select this card
-        </Button>
+        <div class="flex shrink-0 items-center gap-2">
+          <!-- Collection tabs only: commit this card and close the dialog -->
+          <Button
+            v-if="previewItem?.cardKey"
+            @click.stop="linkCardToCollection(searchingCard!.id, previewItem!.cardKey!)"
+          >
+            <Check :size="16" /> Select this card
+          </Button>
+          <!-- New tab, so the link/insert flow behind the overlay isn't discarded. -->
+          <RouterLink
+            :to="`/card/${previewCard.id}`"
+            target="_blank"
+            class="inline-flex items-center gap-2 rounded-md border border-line bg-surface px-3.5 py-2 text-sm font-semibold outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
+            @click.stop
+          >
+            <FileText :size="16" /> View details
+          </RouterLink>
+        </div>
 
         <!-- Page between results (clamped at the ends) -->
         <button
@@ -895,6 +936,12 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
         <Button variant="ghost" @click="showSearchModal = false">Close</Button>
       </template>
     </Dialog>
+
+    <DeckPromptDialog
+      v-if="showDeckPrompt"
+      :owned-cards="ownedCards"
+      @close="showDeckPrompt = false"
+    />
   </div>
 </template>
 
@@ -905,7 +952,9 @@ function getCardImage(deckCard: Deck['cards'][0]): string | undefined {
 }
 
 .main-content {
-  padding: 2rem;
+  /* Horizontal padding lives on the inner max-w wrappers (px-6 sm:px-8) so the
+     content column lines up with Dashboard/Collection at every breakpoint. */
+  padding-block: 1.5rem;
 }
 
 </style>
