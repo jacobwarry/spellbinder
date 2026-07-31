@@ -25,3 +25,10 @@ dist-ssr
 
 # Claude Code session data
 .claude/
+
+# Local MCP server data — personal collection snapshot and generated decks
+mcp/collection.json
+mcp/*.deck.json
+
+# Scryfall bulk-data dumps (hundreds of MB, downloaded locally, never committed)
+bulk/
